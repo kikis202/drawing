@@ -4,3 +4,17 @@ dist/
 .DS_Store
 *.log
 .claude/worktrees/
+test-results/
+playwright-report/
+dist-ssr
+*.local
+.vscode/*
+!.vscode/extensions.json
+.idea
+test-results/
+playwright-report/
+dist-ssr
+*.local
+.vscode/*
+!.vscode/extensions.json
+.idea

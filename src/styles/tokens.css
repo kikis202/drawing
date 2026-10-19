@@ -1,0 +1,11 @@
+:root {
+  --paper: #f2f4f5;
+  --graphite: #26292d;
+  --graphite-2: #5e646b;
+  --studio: #8f9398;
+  --blue: #3e95d1;
+  --line: #cdd2d7;
+  --panel: #e3e7ea;
+
+  font-family: 'Archivo', system-ui, sans-serif;
+}
