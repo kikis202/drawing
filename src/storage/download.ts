@@ -8,7 +8,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.click();
   a.remove();
   // Give the browser a moment to start the download before the URL goes.
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 /** `turnaround-YYYY-MM-DD-HHmm.zip`, in local time. */

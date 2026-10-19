@@ -33,10 +33,12 @@ test('save, list, reopen', async ({ page, isMobile }) => {
   await savedPanel(page).getByRole('button', { name: 'Open' }).click()
   await expect(savedPanel(page)).toBeHidden()
 
-  // The 4 generated shots plus the 2 opened as kept custom tiles.
-  await expect(tiles(page)).toHaveCount(6)
+  // The saved views are already in the restored pattern, so they are kept there, not added again.
+  await expect(tiles(page)).toHaveCount(4)
   await expect(page.getByRole('button', { name: 'Save 2 shots' })).toBeEnabled()
   await expect(sheet(page).getByRole('checkbox', { checked: true })).toHaveCount(2)
+  await expect(page.getByRole('checkbox', { name: 'Keep 30° turn, 0° tilt', checked: true })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Keep 120° turn, 0° tilt', checked: true })).toBeVisible()
 })
 
 test('opening a set restores its exercise', async ({ page, isMobile }) => {
@@ -53,6 +55,36 @@ test('opening a set restores its exercise', async ({ page, isMobile }) => {
   await page.getByRole('button', { name: 'Saved', exact: true }).click()
   await savedPanel(page).getByRole('button', { name: 'Open' }).click()
   await expect(page.getByRole('button', { name: /Stacks/ })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('a damaged record is flagged and does not crash Open', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'desktop layout only')
+  await keep(page, '30° turn, 0° tilt')
+  await page.getByRole('button', { name: 'Save 1 shot' }).click()
+  await expect(page.getByRole('status')).toHaveText('Saved 1 shot.')
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('turnaround', 1)
+        req.onerror = () => reject(req.error)
+        req.onsuccess = () => {
+          const tx = req.result.transaction('sets', 'readwrite')
+          tx.objectStore('sets').put({ id: 'bad', createdAt: Date.now() + 100_000 })
+          tx.oncomplete = () => resolve()
+          tx.onerror = () => reject(tx.error)
+        }
+      }),
+  )
+  await page.getByRole('button', { name: 'Saved', exact: true }).click()
+  const items = savedPanel(page).getByRole('listitem')
+  await expect(items).toHaveCount(2)
+  await expect(items.first().getByText("Can't be read")).toBeVisible()
+  await expect(items.last().getByText('1 shot')).toBeVisible()
+  await items.first().getByRole('button', { name: 'Open' }).click()
+  await expect(savedPanel(page).getByRole('alert')).toHaveText("Couldn't open that set.")
+  await expect(savedPanel(page)).toBeVisible()
+  await items.last().getByRole('button', { name: 'Open' }).click()
+  await expect(savedPanel(page)).toBeHidden()
 })
 
 test('Escape closes the Saved panel and focus returns to its button', async ({ page }) => {

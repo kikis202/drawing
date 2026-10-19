@@ -1,6 +1,7 @@
 import { openDB } from 'idb';
 import type { IDBPDatabase } from 'idb';
 import { zipSync } from 'fflate';
+import { readSettings } from '../modes/rotation/settings-storage';
 import type { FormSpec } from '../geometry/types';
 import type { Settings } from '../modes/rotation/state';
 import { viewSlug } from '../views/label';
@@ -22,6 +23,26 @@ export interface SavedSet {
   settings: Settings;
   hidden: boolean;
   shots: SavedShot[];
+}
+
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * A stored record is trusted no further than this: null unless it has a v2 form with pieces and at least one
+ * shot with a numeric view and an image. Missing or damaged settings are repaired to defaults.
+ */
+export function checkSet(raw: unknown): SavedSet | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const form = r.form as Partial<FormSpec> | null | undefined;
+  if (typeof r.id !== 'string' || !isNum(r.createdAt)) return null;
+  if (!form || form.version !== 2 || !Array.isArray(form.pieces) || form.pieces.length === 0) return null;
+  if (!Array.isArray(r.shots) || r.shots.length === 0) return null;
+  for (const s of r.shots as Record<string, unknown>[]) {
+    const view = s?.view as Record<string, unknown> | null | undefined;
+    if (!view || !isNum(view.turn) || !isNum(view.tilt) || !(s.image instanceof Blob)) return null;
+  }
+  return { ...(r as unknown as SavedSet), settings: readSettings(r.settings) };
 }
 
 export type SaveResult = { ok: true; id: string } | { ok: false; reason: 'blocked' | 'quota' | 'unknown' };

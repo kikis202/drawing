@@ -287,7 +287,11 @@ function RotationStudy({ store, onNoWebGL }: Props) {
 
   const downloadNoticeShots = async () => {
     if (!notice?.shots) return;
-    downloadBlob(await zipSet({ shots: notice.shots }), zipFilename());
+    try {
+      downloadBlob(await zipSet({ shots: notice.shots }), zipFilename());
+    } catch {
+      setNotice({ ...notice, text: "Couldn't make the download. Try again." });
+    }
   };
 
   const downloadShot = async (shot: Shot) => {
@@ -302,7 +306,7 @@ function RotationStudy({ store, onNoWebGL }: Props) {
   const openSet = (set: Parameters<Store['openSaved']>[0]) => {
     cancelSnap();
     setNotice(null);
-    store.openSaved(set);
+    return store.openSaved(set);
   };
 
   const liveView = (variant: 'panel' | 'floating' | 'full') => (

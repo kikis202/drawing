@@ -109,7 +109,7 @@ function readRender(r: Reader, v: unknown, d: RenderOptions): RenderOptions {
 }
 
 /** Field by field over the defaults; JSON.stringify gives a stable comparison since field order is fixed. */
-function readSettings(raw: unknown): Settings {
+export function readSettings(raw: unknown): Settings {
   const d = defaultSettings();
   const r = new Reader();
   const o = r.obj(raw);

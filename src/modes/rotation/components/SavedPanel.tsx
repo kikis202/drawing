@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { downloadBlob, zipFilename } from '../../../storage/download';
-import { deleteSet, listSets, zipSet } from '../../../storage/saved-sets';
+import { checkSet, deleteSet, listSets, zipSet } from '../../../storage/saved-sets';
 import type { SavedSet } from '../../../storage/saved-sets';
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onOpenSet: (set: SavedSet) => void;
+  /** False when the record can't be opened. */
+  onOpenSet: (set: SavedSet) => boolean;
 }
 
 type Listing = 'loading' | 'blocked' | SavedSet[];
@@ -45,7 +46,7 @@ export function SavedPanel({ open, onClose, onOpenSet }: Props) {
       setCovers([]);
       return;
     }
-    const urls = listing.map((set) => (set.shots[0] ? URL.createObjectURL(set.shots[0].image) : ''));
+    const urls = listing.map((set) => (set.shots?.[0]?.image instanceof Blob ? URL.createObjectURL(set.shots[0].image) : ''));
     setCovers(urls);
     return () => urls.forEach((u) => u && URL.revokeObjectURL(u));
   }, [listing]);
@@ -104,16 +105,31 @@ export function SavedPanel({ open, onClose, onOpenSet }: Props) {
               <li key={set.id} class="saved-item">
                 {covers[i] ? <img src={covers[i]} alt="" /> : <span class="saved-cover-blank" />}
                 <div class="saved-info">
-                  <span class="saved-date">{dateFormat.format(set.createdAt)}</span>
-                  <span class="saved-count">{set.shots.length === 1 ? '1 shot' : `${set.shots.length} shots`}</span>
+                  <span class="saved-date">
+                    {typeof set.createdAt === 'number' ? dateFormat.format(set.createdAt) : 'Unknown date'}
+                  </span>
+                  <span class="saved-count">
+                    {checkSet(set) === null
+                      ? "Can't be read"
+                      : set.shots.length === 1
+                        ? '1 shot'
+                        : `${set.shots.length} shots`}
+                  </span>
                 </div>
                 <div class="saved-actions">
                   <button
                     type="button"
                     class="btn btn-small"
                     onClick={() => {
-                      onOpenSet(set);
-                      onClose();
+                      setError(null);
+                      let opened = false;
+                      try {
+                        opened = onOpenSet(set);
+                      } catch {
+                        // reported below
+                      }
+                      if (opened) onClose();
+                      else setError("Couldn't open that set.");
                     }}
                   >
                     Open

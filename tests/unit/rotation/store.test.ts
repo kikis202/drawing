@@ -167,4 +167,81 @@ describe('rotation store', () => {
     expect(s.form!.version).toBe(before + 1);
     expect(JSON.parse(data.get(SETTINGS_KEY)!)).toMatchObject({ exercise: 'carved' });
   });
+
+  describe('openSaved with damaged records', () => {
+    const shot = { view: { turn: 10, tilt: 5 }, label: 'a', image: new Blob() };
+    const open = (patch: Record<string, unknown>) => {
+      const store = createRotationStore(wasm);
+      store.newObject();
+      const result = store.openSaved({ ...savedBase, shots: [shot], ...patch } as never);
+      return { store, result };
+    };
+
+    it('repairs missing or garbage settings', () => {
+      for (const settings of [undefined, { garbage: true }, 'x', null]) {
+        const { store, result } = open({ settings });
+        expect(result).toBe(true);
+        expect(store.state.value.settings).toEqual(initialState.settings);
+        expect(store.state.value.custom).toHaveLength(1);
+      }
+    });
+
+    it('reports a FormSpec v1, a missing form, missing shots and bad views without changing anything', () => {
+      for (const patch of [
+        { form: { ...cube, version: 1 } },
+        { form: undefined },
+        { shots: undefined },
+        { shots: [] },
+        { shots: [{ view: { turn: 'a', tilt: 0 }, image: new Blob() }] },
+        { shots: [{ view: { turn: 1, tilt: 0 }, image: 'no' }] },
+      ]) {
+        const store = createRotationStore(wasm);
+        store.newObject();
+        const before = store.state.value;
+        expect(store.openSaved({ ...savedBase, shots: [shot], ...patch } as never)).toBe(false);
+        expect(store.state.value).toBe(before);
+      }
+    });
+  });
+
+  it('opening a set keeps the pattern shots it saved instead of duplicating them', () => {
+    const store = createRotationStore(wasm);
+    store.newObject();
+    const plan = planShots(savedBase.settings.plan);
+    const inPattern = plan.find((p) => p.role !== 'map')!.view;
+    store.openSaved({
+      ...savedBase,
+      shots: [
+        { view: { ...inPattern }, label: 'a', image: new Blob() },
+        { view: { turn: 11, tilt: 7 }, label: 'b', image: new Blob() },
+      ],
+    });
+    const s = store.state.value;
+    expect(s.custom.map((c) => c.view)).toEqual([{ turn: 11, tilt: 7 }]);
+    const keptViews = s.kept.map((id) => [...s.generated, ...s.custom].find((x) => x.id === id)!.view);
+    expect(keptViews).toEqual([inPattern, { turn: 11, tilt: 7 }]);
+  });
+
+  it('opening a set restores the map shot as the map', () => {
+    const store = createRotationStore(wasm);
+    const withMap = { ...savedBase.settings, plan: { ...savedBase.settings.plan, topMap: true } };
+    store.openSaved({
+      ...savedBase,
+      settings: withMap,
+      shots: [{ view: { turn: 0, tilt: 89 }, label: 'Top view (map)', role: 'map', image: new Blob() }],
+    });
+    const s = store.state.value;
+    const map = s.generated.find((g) => g.role === 'map')!;
+    expect(s.kept).toEqual([map.id]);
+    expect(s.custom).toEqual([]);
+  });
+
+  it('a saved map with no map in the pattern stays a map shot', () => {
+    const store = createRotationStore(wasm);
+    store.openSaved({
+      ...savedBase,
+      shots: [{ view: { turn: 0, tilt: 89 }, label: 'Top view (map)', role: 'map', image: new Blob() }],
+    });
+    expect(store.state.value.custom[0]).toMatchObject({ role: 'map', view: { turn: 0, tilt: 89 } });
+  });
 });
