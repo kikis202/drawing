@@ -10,6 +10,7 @@ export function App() {
   const [hash, setHash] = useState(window.location.hash)
   const [headerActions, setHeaderActions] = useState<HTMLElement | null>(null)
   const [loaded, setLoaded] = useState<{ id: string; Mode: ComponentType } | null>(null)
+  const [failedId, setFailedId] = useState<string | null>(null)
   const mode = resolveMode(hash)
 
   useEffect(() => {
@@ -20,9 +21,15 @@ export function App() {
 
   useEffect(() => {
     let current = true
-    mode.load().then((module) => {
-      if (current) setLoaded({ id: mode.id, Mode: module.default })
-    })
+    setFailedId(null)
+    mode
+      .load()
+      .then((module) => {
+        if (current) setLoaded({ id: mode.id, Mode: module.default })
+      })
+      .catch(() => {
+        if (current) setFailedId(mode.id)
+      })
     return () => {
       current = false
     }
@@ -45,7 +52,9 @@ export function App() {
         )}
         <div class="header-actions" ref={setHeaderActions} />
       </header>
-      <main class="app-main">{Mode && <Mode />}</main>
+      <main class="app-main">
+        {failedId === mode.id ? <p role="alert">Couldn't load this mode. Reload to try again.</p> : Mode && <Mode />}
+      </main>
     </HeaderActionsContext.Provider>
   )
 }
