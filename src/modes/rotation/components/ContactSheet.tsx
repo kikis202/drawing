@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Shot } from '../../../views/types';
-import { fitColumns, fitSheet } from '../sheet-fit';
+import { fitColumns, fitSheet, MIN_TILE } from '../sheet-fit';
 import { ShotTile } from './ShotTile';
 
 const GAP = 14;
@@ -14,6 +14,8 @@ interface Props {
   hiddenShotId: string | null;
   /** Forces the column count (Grid); null lets the sheet pick. */
   columns?: number | null;
+  /** The smallest tile before the free layout stops adding columns and scrolls. */
+  minTile?: number;
   onSnap: (shot: Shot) => void;
   onToggleKeep: (id: string) => void;
   onReveal: () => void;
@@ -30,6 +32,7 @@ export function ContactSheet({
   activeShotId,
   hiddenShotId,
   columns = null,
+  minTile = MIN_TILE,
   onSnap,
   onToggleKeep,
   onReveal,
@@ -53,7 +56,7 @@ export function ContactSheet({
     area && area.w > 0
       ? columns !== null
         ? fitColumns(rows, columns, area.w, area.h, GAP)
-        : fitSheet(shots.length, area.w, area.h, GAP)
+        : fitSheet(shots.length, area.w, area.h, GAP, minTile)
       : null;
 
   return (

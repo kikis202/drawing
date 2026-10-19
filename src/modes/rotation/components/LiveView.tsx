@@ -6,7 +6,14 @@ import type { RenderOptions } from '../../../render/render-options';
 import { viewLabel } from '../../../views/label';
 import type { View } from '../../../views/types';
 
+/** Beyond this many pixels a press is a drag, not a tap. */
+const TAP_SLOP = 6;
+
 interface Props {
+  /** The panel on desktop; on phones a small floating square that expands to the full screen. */
+  variant: 'panel' | 'floating' | 'full';
+  onExpand: () => void;
+  onCollapse: () => void;
   form: { mesh: FormMesh; version: number };
   view: View;
   render: RenderOptions;
@@ -19,7 +26,19 @@ interface Props {
 }
 
 /** The rotatable view on studio grey. Owns its own renderer and scene. */
-export function LiveView({ form, view, render, onDrag, onKey, onDragStart, onCapture, onWebGLError }: Props) {
+export function LiveView({
+  variant,
+  onExpand,
+  onCollapse,
+  form,
+  view,
+  render,
+  onDrag,
+  onKey,
+  onDragStart,
+  onCapture,
+  onWebGLError,
+}: Props) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderer = useRef<THREE.WebGLRenderer | null>(null);
@@ -28,7 +47,7 @@ export function LiveView({ form, view, render, onDrag, onKey, onDragStart, onCap
   const latest = useRef({ view, render });
   latest.current = { view, render };
   const frame = useRef(0);
-  const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; startX: number; startY: number } | null>(null);
 
   // One setView + render per animation frame at most: setView reallocates line buffers.
   const schedule = useRef(() => {
@@ -98,12 +117,13 @@ export function LiveView({ form, view, render, onDrag, onKey, onDragStart, onCap
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
     (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
-    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
-    onDragStart();
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY };
+    // The floating square only takes taps; it never rotates the object.
+    if (variant !== 'floating') onDragStart();
   };
   const onPointerMove = (e: PointerEvent) => {
     const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
+    if (!d || d.id !== e.pointerId || variant === 'floating') return;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     if (dx === 0 && dy === 0) return;
@@ -111,32 +131,56 @@ export function LiveView({ form, view, render, onDrag, onKey, onDragStart, onCap
     onDrag(dx, dy);
   };
   const onPointerEnd = (e: PointerEvent) => {
-    if (drag.current?.id === e.pointerId) drag.current = null;
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    drag.current = null;
+    const moved = Math.hypot(e.clientX - d.startX, e.clientY - d.startY);
+    if (variant === 'floating' && e.type === 'pointerup' && moved < TAP_SLOP) onExpand();
   };
   const onKeyDown = (e: KeyboardEvent) => {
+    if (variant === 'floating') {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onExpand();
+      }
+      return;
+    }
+    if (variant === 'full' && e.key === 'Escape') {
+      onCollapse();
+      return;
+    }
     if (onKey(e.key, e.shiftKey)) e.preventDefault();
   };
 
   return (
-    <div class="live" ref={frameRef}>
+    <div class={`live live-${variant}`} ref={frameRef}>
       <canvas
         ref={canvasRef}
         class="live-canvas"
-        role="application"
+        role={variant === 'floating' ? 'button' : 'application'}
         tabIndex={0}
-        aria-label="Live view. Drag or use arrow keys to rotate"
+        aria-label={variant === 'floating' ? 'Expand live view' : 'Live view. Drag or use arrow keys to rotate'}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
         onKeyDown={onKeyDown}
       />
-      <button type="button" class="btn live-capture" onClick={onCapture}>
-        Capture view
-      </button>
-      <p class="live-readout" data-testid="live-readout">
-        {viewLabel(view)}
-      </p>
+      {variant === 'full' && (
+        <button type="button" class="btn live-back" onClick={onCollapse}>
+          Back to shots
+        </button>
+      )}
+      {variant !== 'floating' && (
+        <>
+          <button type="button" class="btn live-capture" onClick={onCapture}>
+            Capture view
+          </button>
+          <p class="live-readout" data-testid="live-readout">
+            {viewLabel(view)}
+          </p>
+        </>
+      )}
     </div>
   );
 }

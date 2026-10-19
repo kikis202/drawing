@@ -6,10 +6,12 @@ import type { RenderOptions } from '../../render/render-options';
 import { planColumns } from '../../views/patterns';
 import { applyDrag, applyKey, easeInOut, interpolateView } from '../../views/pose';
 import type { Shot } from '../../views/types';
+import { BottomSheet } from './components/BottomSheet';
 import { ContactSheet } from './components/ContactSheet';
 import { CustomisePanel } from './components/CustomisePanel';
 import { ExercisePanel } from './components/ExercisePanel';
 import { LiveView } from './components/LiveView';
+import { PhoneBar } from './components/PhoneBar';
 import { ShotsPanel } from './components/ShotsPanel';
 import { TopBar } from './components/TopBar';
 import { ShotImages, shotKey } from './shot-images';
@@ -30,11 +32,16 @@ import {
   toggleKeep,
 } from './state';
 import { createRotationStore } from './store';
+import { useIsPhone } from './use-phone';
 import './rotation.css';
 
 type Store = ReturnType<typeof createRotationStore>;
 
 const SNAP_MS = 450;
+/** The Grid pattern can't fit more than this many columns across a phone. */
+const PHONE_MAX_COLUMNS = 2;
+/** Phones fit two columns of at least this size before the sheet scrolls. */
+const PHONE_MIN_TILE = 150;
 
 function hasWebGL(): boolean {
   try {
@@ -102,6 +109,9 @@ function RotationStudy({ store, onNoWebGL }: Props) {
   const shotImages = useRef<ShotImages | null>(null);
   const requested = useRef<{ version: number; render: RenderOptions; shots: Shot[] } | null>(null);
   const snapFrame = useRef(0);
+  const phone = useIsPhone();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   useLayoutEffect(() => {
     // One shot renderer for the mode's lifetime: WebGL contexts are scarce.
@@ -205,75 +215,96 @@ function RotationStudy({ store, onNoWebGL }: Props) {
   const startIsLive = start.turn === s.live.turn && start.tilt === s.live.tilt;
   const keptCount = keptShots(s).length;
 
+  const columns = planColumns(settings.plan);
+  const newObject = () => regenerate(store.newObject);
+  const save = () => {
+    // Saving arrives in a later task.
+  };
+
+  const liveView = (variant: 'panel' | 'floating' | 'full') => (
+    <LiveView
+      variant={variant}
+      onExpand={() => setExpanded(true)}
+      onCollapse={() => setExpanded(false)}
+      form={s.form!}
+      view={s.live}
+      render={s.settings.render}
+      onDrag={onDrag}
+      onDragStart={cancelSnap}
+      onWebGLError={onNoWebGL}
+      onKey={onKey}
+      onCapture={() => {
+        cancelSnap();
+        store.dispatch(captureView);
+      }}
+    />
+  );
+
+  const panels = (
+    <>
+      <ExercisePanel
+        selected={settings.exercise}
+        canVary={s.form.spec.style === 'clean'}
+        onApply={(id) => regenerate(() => store.applyExercise(id))}
+        onVariation={() => regenerate(store.variation)}
+        onNewObject={newObject}
+      />
+      <ShotsPanel
+        plan={settings.plan}
+        render={settings.render}
+        onPlan={(patch) => store.dispatch(setPlan, patch, Math.random())}
+        onStartFromLive={() => {
+          if (!startIsLive) store.dispatch(startFromLive, Math.random());
+        }}
+        onRender={(patch) => store.dispatch(setRender, patch)}
+      />
+      <CustomisePanel
+        settings={settings}
+        onStyle={(style) => store.dispatch(setStyle, style)}
+        onLevel={(level) => store.dispatch(setLevel, level)}
+        onToggleShape={(type) => store.dispatch(toggleAllowed, type)}
+        onToggleJoin={(join) => store.dispatch(toggleJoin, join)}
+        onLens={(lens) => store.dispatch(setRender, { lens })}
+        onTopMap={(on) => store.dispatch(setPlan, { topMap: on }, Math.random())}
+        onHideOne={(on) => store.dispatch(setHideOne, on, Math.random())}
+      />
+    </>
+  );
+
   return (
-    <div class="rotation">
-      <TopBar />
+    <div class={`rotation${phone ? ' rotation-phone' : ''}`}>
+      <TopBar onNewObject={phone ? newObject : undefined} />
       <ContactSheet
         shots={allShots(s)}
         urls={urls}
         kept={s.kept}
         activeShotId={s.activeShotId}
         hiddenShotId={s.revealed ? null : s.hiddenShotId}
-        columns={planColumns(settings.plan)}
+        columns={phone && columns !== null ? Math.min(columns, PHONE_MAX_COLUMNS) : columns}
+        minTile={phone ? PHONE_MIN_TILE : undefined}
         onSnap={snap}
         onToggleKeep={(id) => store.dispatch(toggleKeep, id)}
         onReveal={() => store.dispatch(reveal)}
       />
-      <aside class="rotation-side">
-        <LiveView
-          form={s.form}
-          view={s.live}
-          render={s.settings.render}
-          onDrag={onDrag}
-          onDragStart={cancelSnap}
-          onWebGLError={onNoWebGL}
-          onKey={onKey}
-          onCapture={() => {
-            cancelSnap();
-            store.dispatch(captureView);
-          }}
-        />
-        <div class="panel">
-          <ExercisePanel
-            selected={settings.exercise}
-            canVary={s.form.spec.style === 'clean'}
-            onApply={(id) => regenerate(() => store.applyExercise(id))}
-            onVariation={() => regenerate(store.variation)}
-            onNewObject={() => regenerate(store.newObject)}
-          />
-          <ShotsPanel
-            plan={settings.plan}
-            render={settings.render}
-            onPlan={(patch) => store.dispatch(setPlan, patch, Math.random())}
-            onStartFromLive={() => {
-              if (!startIsLive) store.dispatch(startFromLive, Math.random());
-            }}
-            onRender={(patch) => store.dispatch(setRender, patch)}
-          />
-          <CustomisePanel
-            settings={settings}
-            onStyle={(style) => store.dispatch(setStyle, style)}
-            onLevel={(level) => store.dispatch(setLevel, level)}
-            onToggleShape={(type) => store.dispatch(toggleAllowed, type)}
-            onToggleJoin={(join) => store.dispatch(toggleJoin, join)}
-            onLens={(lens) => store.dispatch(setRender, { lens })}
-            onTopMap={(on) => store.dispatch(setPlan, { topMap: on }, Math.random())}
-            onHideOne={(on) => store.dispatch(setHideOne, on, Math.random())}
-          />
-        </div>
-        <div class="panel-save">
-          <button
-            type="button"
-            class="btn btn-primary save"
-            disabled={keptCount === 0}
-            onClick={() => {
-              // Saving arrives in a later task.
-            }}
-          >
-            {keptCount === 1 ? 'Save 1 shot' : `Save ${keptCount} shots`}
-          </button>
-        </div>
-      </aside>
+      {phone ? (
+        <>
+          {liveView(expanded ? 'full' : 'floating')}
+          <PhoneBar keptCount={keptCount} onSettings={() => setSettingsOpen(true)} onSave={save} />
+          <BottomSheet open={settingsOpen} title="Settings" onClose={() => setSettingsOpen(false)}>
+            {panels}
+          </BottomSheet>
+        </>
+      ) : (
+        <aside class="rotation-side">
+          {liveView('panel')}
+          <div class="panel">{panels}</div>
+          <div class="panel-save">
+            <button type="button" class="btn btn-primary save" disabled={keptCount === 0} onClick={save}>
+              {keptCount === 1 ? 'Save 1 shot' : `Save ${keptCount} shots`}
+            </button>
+          </div>
+        </aside>
+      )}
     </div>
   );
 }
