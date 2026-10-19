@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { ManifoldToplevel } from 'manifold-3d';
 import { buildForm, buildManifold } from '../../../src/geometry/build-form';
+import { pieceManifold } from '../../../src/geometry/primitives';
 import {
   LEVELS,
   generateCleanForm,
@@ -36,6 +37,37 @@ const adds = (spec: FormSpec) => spec.pieces.filter((p) => p.op === 'add');
 const steps = (spec: FormSpec) => (spec.recipe ?? []).filter((s) => s.join !== 'base');
 const onStep = (v: number, step: number) => Math.abs(v / step - Math.round(v / step)) < EPS;
 const tilted = (spec: FormSpec) => spec.pieces.filter((p) => p.rotation.some((r) => !onStep(r, 90)));
+
+/** Pieces per recipe step. */
+const stepSize = (join: string, slot: number) => (join === 'mirror' ? 2 : join === 'totem' ? slot + 2 : 1);
+
+/** True when every step of `spec` keeps the strict rules: >= 8% growth, cut 10-50% of its target, 2 : 1 extent. */
+function passesRules(spec: FormSpec): boolean {
+  let n = 0;
+  let volume = 0;
+  for (const step of spec.recipe!) {
+    const k = stepSize(step.join, step.slot);
+    const pieces = spec.pieces.slice(0, n + k);
+    if (pieces.length < n + k) return false;
+    const m = buildManifold(wasm, pieces);
+    const v = m.volume();
+    const { min, max } = m.boundingBox();
+    m.delete();
+    const ext = [0, 1, 2].map((i) => max[i] - min[i]);
+    if (Math.max(...ext) > 2 * Math.min(...ext) + EPS) return false;
+    if (step.join === 'cut') {
+      const t = pieceManifold(wasm, spec.pieces[step.target]);
+      const c = pieceManifold(wasm, spec.pieces[n]);
+      const both = t.intersect(c);
+      const removed = both.volume() / t.volume();
+      [t, c, both].forEach((x) => x.delete());
+      if (removed < 0.1 - EPS || removed > 0.5 + EPS) return false;
+    } else if (step.join !== 'base' && v < 1.08 * volume - EPS) return false;
+    volume = v;
+    n += k;
+  }
+  return n === spec.pieces.length;
+}
 
 function randomSettings(rand: () => number): CleanSettings {
   const level = (1 + Math.floor(rand() * 6)) as Level;
@@ -166,6 +198,24 @@ describe('generateCleanForm', () => {
     expect(changed).toBeGreaterThanOrEqual(8);
   });
 
+  it('variation of every exercise keeps the strict rules in at least 99% of seeds', () => {
+    for (const settings of EXERCISE_SETTINGS) {
+      let ok = 0;
+      for (let seed = 1; seed <= 200; seed++) {
+        if (passesRules(varyCleanForm(wasm, generateCleanForm(wasm, seed, settings)))) ok++;
+      }
+      expect(ok, JSON.stringify(settings)).toBeGreaterThanOrEqual(198);
+    }
+  }, 120_000);
+
+  it('chests and lids has a hinged lid in at least 99% of seeds', () => {
+    let lids = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      if (steps(generateCleanForm(wasm, seed, EXERCISE_SETTINGS[2])).some((s) => s.join === 'hinged')) lids++;
+    }
+    expect(lids).toBeGreaterThanOrEqual(297);
+  }, 60_000);
+
   it('dimensions are on the module and positions on the grid', () => {
     for (const level of LEVEL_IDS) {
       for (let seed = 1; seed <= 15; seed++) {
@@ -219,7 +269,6 @@ describe('generateCleanForm', () => {
       expect(() => buildEdgeAdjacency(mesh), label).not.toThrow();
     }
     const elapsed = performance.now() - start;
-    console.info(`clean sweep: ${cases.length} forms in ${Math.round(elapsed)} ms`);
     expect(elapsed).toBeLessThan(30_000);
   }, 60_000);
 });

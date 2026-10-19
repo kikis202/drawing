@@ -56,6 +56,9 @@ const SKIPPED: Partial<Record<Level, string>> = {
 const STEP_TRIES = 12;
 const FORM_TRIES = 6;
 const VARIATION_TRIES = 12;
+/** Base pieces one variation number tries, each with a search of at most SEARCH_BUDGET draws. */
+const VARIATION_BASES = 8;
+const SEARCH_BUDGET = 60;
 const MIN_GROWTH = 1.08;
 const MAX_EXTENT_RATIO = 2;
 const MIN_CUT = 0.1;
@@ -181,6 +184,8 @@ class Build {
   /** One manifold per piece (cutters included), for overlap and cut checks. */
   private parts: Manifold[] = [];
   private form: Manifold | undefined;
+  /** The form before each committed step, and that step's piece count, for `undo()`. */
+  private history: { form: Manifold; pieces: number }[] = [];
   private wasm: ManifoldToplevel;
 
   constructor(wasm: ManifoldToplevel) {
@@ -224,7 +229,7 @@ class Build {
         made.forEach((m) => m.delete());
       }
     }
-    form.delete();
+    this.history.push({ form, pieces: placed.length });
     this.form = next;
     this.parts.push(...made);
     this.pieces.push(...placed);
@@ -251,11 +256,23 @@ class Build {
     return !this.overlapsOthers(target, [cutter]);
   }
 
+  /** Takes back the last committed step. */
+  undo(): void {
+    const last = this.history.pop()!;
+    this.form!.delete();
+    this.form = last.form;
+    this.parts.splice(-last.pieces).forEach((m) => m.delete());
+    this.pieces.splice(-last.pieces);
+    this.recipe.pop();
+  }
+
   delete(): void {
     this.form?.delete();
     this.parts.forEach((m) => m.delete());
+    this.history.forEach((h) => h.form.delete());
     this.form = undefined;
     this.parts = [];
+    this.history = [];
   }
 }
 
@@ -344,14 +361,23 @@ function attempt(wasm: ManifoldToplevel, seed: number, settings: CleanSettings):
   const tilt = settings.level === 6 && extras.length > 0;
   const cutNeeded = settings.level === 5 && extras.length > 0;
   const cutMaybe = settings.level === 6 && joins.includes('cut') && rand() < OPTIONAL_CUT;
+  const type = baseType(settings.allowed);
 
-  const build = new Build(wasm);
+  let build = new Build(wasm);
   try {
-    const type = baseType(settings.allowed);
-    build.setBase(basePiece(type, baseSize(sizes, type, settings.level === 1 ? 0.5 : 1)));
-    // the tilted piece goes first, while the base's faces are free; later pieces keep clear of it. An extra
-    // join that the shapes rule out ('none') can't be helped by another seed, so only 'fail' retries.
-    let extrasOk = !tilt || oneStep(build, rand, sizes, extras, plan, 1) !== 'fail';
+    // the tilted piece goes first, while the base's faces are free; later pieces keep clear of it. Its fit
+    // depends most on the base's proportions, so a failed lid draws a new base. An extra join that the shapes
+    // rule out ('none') can't be helped by another seed, so only 'fail' retries.
+    let extrasOk = true;
+    for (let t = 0; t < STEP_TRIES; t++) {
+      if (t > 0) {
+        build.delete();
+        build = new Build(wasm);
+      }
+      build.setBase(basePiece(type, baseSize(sizes, type, settings.level === 1 ? 0.5 : 1)));
+      extrasOk = !tilt || oneStep(build, rand, sizes, extras, plan, 1) !== 'fail';
+      if (extrasOk) break;
+    }
     let failed = false;
     while (build.count < wanted) {
       const result = oneStep(build, rand, sizes, regular, plan, wanted - build.count);
@@ -385,54 +411,134 @@ export function generateCleanForm(wasm: ManifoldToplevel, seed: number, settings
   return { version: 2, seed, style: 'clean', pieces: best!.pieces, recipe: best!.recipe, variation: 0 };
 }
 
-/** The recipe rebuilt with proportions for `variation`. `passed` is false when a step broke the rules; when not
- *  `strict`, such a step is kept if it leaves one piece, and the form stops at a step that can't be placed at all. */
-function replay(
+/** A proportion stream for `variation` that counts its draws, so a build can resume where it left off. */
+function sizeStream(seed: number, variation: number, skip = 0): { next: () => number; used: () => number } {
+  const rand = proportions(seed, variation);
+  for (let i = 0; i < skip; i++) rand();
+  let used = skip;
+  return {
+    next: () => {
+      used++;
+      return rand();
+    },
+    used: () => used,
+  };
+}
+
+type JoinStep = RecipeStep & { join: JoinKind };
+
+const joinSteps = (recipe: RecipeStep[]) => recipe.filter((s): s is JoinStep => s.join !== 'base');
+
+/** Pieces a recipe step adds to `pieces`, cutters included. */
+const stepPieces = (step: JoinStep) => Math.max(1, added(step.join, step.slot));
+
+interface Search {
+  passed: boolean;
+  /** The passing form, or the deepest prefix built under the strict rules. */
+  pieces: Piece[];
+  /** Recipe steps (base included) in `pieces`. */
+  prefix: number;
+  /** Stream draws used when `pieces` was reached. */
+  used: number;
+}
+
+/** The recipe built with proportions for `variation`. Up to VARIATION_BASES base pieces, since the base's
+ *  proportions decide most of what fits; on each, depth first, each step with STEP_TRIES draws per visit, backing
+ *  up to the step before when one can't be placed, until SEARCH_BUDGET draws are spent. */
+function search(wasm: ManifoldToplevel, recipe: RecipeStep[], seed: number, variation: number): Search {
+  const sizes = sizeStream(seed, variation);
+  const steps = joinSteps(recipe);
+  const type = recipe[0].type;
+  let budget = 0;
+  let deepest: Search = { passed: false, pieces: [], prefix: 0, used: 0 };
+  const descend = (build: Build, i: number): boolean => {
+    if (i + 1 > deepest.prefix) deepest = { passed: false, pieces: [...build.pieces], prefix: i + 1, used: sizes.used() };
+    if (i === steps.length) return true;
+    for (let t = 0; t < STEP_TRIES && budget > 0; t++) {
+      budget--;
+      const placed = place(steps[i], build.pieces, sizes.next);
+      if (!placed || !build.tryCommit(steps[i], placed, true)) continue;
+      if (descend(build, i + 1)) return true;
+      build.undo();
+    }
+    return false;
+  };
+  for (let t = 0; t < VARIATION_BASES; t++) {
+    budget = SEARCH_BUDGET;
+    const build = new Build(wasm);
+    try {
+      build.setBase(basePiece(type, baseSize(sizes.next, type, recipe.length === 1 ? 0.5 : 1)));
+      if (descend(build, 0)) return { ...deepest, passed: true };
+    } finally {
+      build.delete();
+    }
+  }
+  return deepest;
+}
+
+/** `found`'s strict prefix, then the rest of the recipe keeping a step that breaks the rules if it leaves one
+ *  piece. `violations` counts such steps and any step that couldn't be placed (where the form stops). */
+function completeLeniently(
   wasm: ManifoldToplevel,
   recipe: RecipeStep[],
+  found: Search,
   seed: number,
   variation: number,
-  strict: boolean,
-): { pieces: Piece[]; passed: boolean } {
-  const sizes = proportions(seed, variation);
+): { pieces: Piece[]; violations: number } {
+  const steps = joinSteps(recipe);
+  const sizes = sizeStream(seed, variation, found.used);
   const build = new Build(wasm);
   try {
-    const type = recipe[0].type;
-    build.setBase(basePiece(type, baseSize(sizes, type, recipe.length === 1 ? 0.5 : 1)));
-    let passed = true;
-    for (const step of recipe.slice(1)) {
-      if (step.join === 'base') continue;
-      const s = { ...step, join: step.join };
+    build.setBase(found.pieces[0]);
+    let n = 1;
+    for (const step of steps.slice(0, found.prefix - 1)) {
+      build.tryCommit(step, found.pieces.slice(n, n + stepPieces(step)), false);
+      n += stepPieces(step);
+    }
+    let violations = 0;
+    for (const [i, step] of steps.slice(found.prefix - 1).entries()) {
       let ok = false;
-      for (const rules of strict ? [true] : [true, false]) {
+      for (const rules of [true, false]) {
         for (let t = 0; t < STEP_TRIES && !ok; t++) {
-          const placed = place(s, build.pieces, sizes);
-          ok = !!placed && build.tryCommit(s, placed, rules);
+          const placed = place(step, build.pieces, sizes.next);
+          ok = !!placed && build.tryCommit(step, placed, rules);
         }
         if (ok) break;
-        passed = false;
+        violations++;
       }
-      if (!ok) return { pieces: build.pieces, passed: false };
+      // this step and every one after it are missing
+      if (!ok) return { pieces: build.pieces, violations: violations - 1 + steps.length - (found.prefix - 1) - i };
     }
-    return { pieces: build.pieces, passed };
+    return { pieces: build.pieces, violations };
   } finally {
     build.delete();
   }
 }
 
-/** The same recipe with the next variation number whose proportions pass the rules and differ from `spec`'s. */
+/** The same recipe with the next variation number whose proportions pass the rules and differ from `spec`'s.
+ *  If none passes, the best attempt: furthest strict prefix, then fewest broken steps, then lowest variation. */
 export function varyCleanForm(wasm: ManifoldToplevel, spec: FormSpec): FormSpec {
   const recipe = spec.recipe;
   if (spec.style !== 'clean' || !recipe?.length) return spec;
   const from = spec.variation ?? 0;
   const current = JSON.stringify(spec.pieces);
+  const tried: { variation: number; found: Search }[] = [];
   for (let i = 1; i <= VARIATION_TRIES; i++) {
     const variation = from + i;
-    const last = i === VARIATION_TRIES;
-    const { pieces, passed } = replay(wasm, recipe, spec.seed, variation, !last);
-    if ((passed && JSON.stringify(pieces) !== current) || last) return { ...spec, pieces, recipe, variation };
+    const found = search(wasm, recipe, spec.seed, variation);
+    if (found.passed && JSON.stringify(found.pieces) !== current) return { ...spec, pieces: found.pieces, recipe, variation };
+    tried.push({ variation, found });
   }
-  return spec;
+  // a variation that only repeats the current form still keeps every rule
+  const same = tried.find((t) => t.found.passed);
+  if (same) return { ...spec, pieces: same.found.pieces, recipe, variation: same.variation };
+  const top = Math.max(...tried.map((t) => t.found.prefix));
+  let best: { variation: number; pieces: Piece[]; violations: number } | undefined;
+  for (const t of tried.filter((c) => c.found.prefix === top)) {
+    const done = completeLeniently(wasm, recipe, t.found, spec.seed, t.variation);
+    if (!best || done.violations < best.violations) best = { variation: t.variation, ...done };
+  }
+  return { ...spec, pieces: best!.pieces, recipe, variation: best!.variation };
 }
 
 /** What the level skips because of the user's join settings, e.g. "Level 5 (no cut: Clean cut is off)". */
