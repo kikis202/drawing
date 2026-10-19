@@ -103,7 +103,7 @@ All pieces are built from a unit module, so proportions can be compared across v
 
 | Join | Rule |
 |---|---|
-| Stack | Piece B stands on a face of A, centred or on thirds, with its axis along the face normal. B's contact face lies fully inside A's face. |
+| Stack | Piece B stands on A's top face, centred or on thirds, with its axis vertical. B's contact face lies fully inside A's top face. Side attachments come only from Wing, Through and Mirror pair (build ruling P21). |
 | Totem | 2–4 round pieces (cylinder, cone, sphere) share one axis, like a lathe-turned object. A totem always stands on a box base, so the form doesn't look identical from every turn. |
 | Half-sunk | A cylinder lies with its axis parallel to a box's top edge, its centre in the top face's plane, so half of it is buried. This is the chest lid. |
 | Wing (L / T) | A second box attaches to a side face of A, with its contact face fully inside that face. It is also flush with A along one more face, sharing A's top or bottom plane exactly, which gives L and T shapes. Wings on opposite sides give U shapes, and wings offset on opposite sides give Z shapes. |
@@ -132,7 +132,19 @@ All pieces are built from a unit module, so proportions can be compared across v
 - The form must be one connected piece.
 - Each placement step must grow the form's volume, at that point in construction, by at least 8%. A mirror pair counts as one step. A Through piece's protruding parts count.
 - Every cut must remove 10–50% of its target piece's volume.
-- A level whose extra join is enabled must produce at least one of it. This means the clean cut at Level 5, and the hinged lid or 45° piece at Level 6.
+- A level whose extra join is enabled must produce at least one of it. This means the clean cut at Level 5, and the hinged lid or 45° piece at Level 6. There is one exception, the chest recipes below.
+- **Chest recipes** (build rulings P24–P26) apply at Level 6 when all four of these hold:
+  - Half-sunk and Hinged lid are enabled.
+  - The 45° piece is off.
+  - A cylinder is allowed.
+  - The other enabled joins are only Stack or Clean cut.
+
+  Each form is then one of two kinds, about half each, chosen from the seed:
+  - A **closed chest**: a box with a half-sunk cylinder lid along its top, as long as the edge or one module shorter, and centred. This lid counts as Level 6's extra piece.
+  - An **open chest**: a box with a hinged lid.
+
+  For chests, the level's piece count is a cap, not a minimum.
+- When the enabled joins can't add pieces, as with Carved blocks (Clean cut only), the level's piece range is also a cap. Carved blocks is one box with one clean cut (build ruling P13).
 
 **Settings that can't all be met:** the generator never fails and never blocks the user.
 - In Customise, join chips the current level doesn't allow are shown disabled with "from level N".
@@ -230,7 +242,7 @@ These were shown as "Later" in the mockup:
 - **Wing:** a box on a side face, flush with A's top or bottom plane, giving L, T, U and Z shapes.
 - **Piece counting:** every primitive counts, including a totem's base and both halves of a mirror pair. Level piece ranges were widened to fit (L3 2–4, L4 3–5, L5 3–5, L6 3–6).
 - **Volume rule:** at least 8% growth per placement step, measured at that point in construction. A mirror pair is one step. Cuts must remove 10–50% of the target piece, not 15–50% of the whole form, so a corner notch qualifies.
-- **New join "45° piece":** Level 6 picks either it or a hinged lid. Chests and lids uses only the hinged lid.
+- **New join "45° piece":** Level 6 picks either it or a hinged lid. Chests and lids doesn't use the 45° piece. Since build ruling P24 it makes closed or open chests (see the rejection rules).
 - **Settings that can't all be met:** the generator never blocks. Disallowed join chips are disabled with "from level N". If the level's extra join is switched off, the level generates without it and says so.
 - **Variation:** keeps the recipe and steps a variation number. On failure it tries the next number and never changes the recipe. It is disabled for Freeform.
 - **Sequence start:** captured when the pattern is chosen or "Start from live view" is pressed. It doesn't follow drags.
