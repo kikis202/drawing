@@ -37,7 +37,9 @@ export class FormScene {
     this.meshMaterial = new THREE.MeshLambertMaterial({
       color: '#D5D9DD',
       polygonOffset: true,
-      polygonOffsetFactor: 1,
+      // Steep enough that wide line quads at concave creases don't fail the depth test and
+      // show as a blue hidden-line fringe beside the visible line.
+      polygonOffsetFactor: 3,
       polygonOffsetUnits: 1,
     });
     // Explicit draw order: surface, then hidden lines (depth-tested against the surface only),
@@ -70,9 +72,12 @@ export class FormScene {
     // Lighting is fixed relative to the camera.
     this.scene.add(new THREE.HemisphereLight('#ffffff', '#8a8f95', 1.1));
     const key = new THREE.DirectionalLight('#ffffff', 2.0);
+    // Key from the upper left, about 38° off the view axis. The target is camera-relative too,
+    // so the angle holds for every view.
     key.position.set(-1.2, 1.5, 1);
     key.target = new THREE.Object3D();
-    this.scene.add(key.target);
+    key.target.position.set(0, 0, -1.5);
+    this.camera.add(key.target);
     this.camera.add(key);
     this.scene.add(this.camera);
   }

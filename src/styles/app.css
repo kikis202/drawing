@@ -44,3 +44,9 @@ body {
   min-height: 0;
   padding: 16px;
 }
+
+button,
+input,
+select {
+  font: inherit;
+}

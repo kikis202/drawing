@@ -1,11 +1,10 @@
 /// <reference lib="dom" />
 import { expect, test } from '@playwright/test'
 
-// Needs shots on the page (Task 9); remove the fixme there.
-test.fixme('a shot renders the form with outlines on white', async ({ page }) => {
+test('a shot renders the form with outlines on white', async ({ page }) => {
   await page.goto('/drawing/')
-  const img = page.locator('img').first()
-  await expect(img).toBeVisible()
+  const img = page.getByRole('list', { name: 'Shots' }).getByRole('listitem').first().locator('img')
+  await expect(img).toBeVisible({ timeout: 20_000 })
   const result = await img.evaluate(async (el) => {
     const image = el as HTMLImageElement
     await image.decode()
