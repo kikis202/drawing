@@ -443,6 +443,30 @@ describe('placeJoin edge cases', () => {
     expect(flushEnd).toBeGreaterThan(0);
   });
 
+  it('a chest lid is centred and as long as its edge or one module shorter', () => {
+    const targets: Piece[] = [target, { ...target, size: [2, 1, 1.5] }, { ...target, size: [1, 1.5, 2], rotation: [0, 90, 0] }];
+    let checked = 0;
+    for (const t of targets) {
+      const tb = box(t);
+      for (const slot of [18, 19]) {
+        for (let seed = 1; seed <= 10; seed++) {
+          const placed = placeJoin('halfSunk', slot, ctx(seed, PRIMITIVES, [t]));
+          if (!placed) continue;
+          checked++;
+          const lid = placed.pieces[0];
+          for (const c of lid.position) expect(onStep(c, GRID)).toBe(true);
+          const along = slot === 18 ? 0 : 2;
+          const edge = tb.max[along] - tb.min[along];
+          expect([edge, edge - 0.5]).toContain(lid.size[1]);
+          expect(lid.position[0]).toBeCloseTo((tb.min[0] + tb.max[0]) / 2, 9);
+          expect(lid.position[2]).toBeCloseTo((tb.min[2] + tb.max[2]) / 2, 9);
+          expect(lid.position[1]).toBeCloseTo(tb.max[1], 9);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(20);
+  });
+
   it('a target turned by other than 90 degrees gives null for every join', () => {
     const lid = placeJoin('hinged', 0, ctx(1))!.pieces[0];
     const tilt = placeJoin('tilt45', 0, ctx(1))!.pieces[0];

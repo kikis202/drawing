@@ -89,6 +89,10 @@ const OPTIONAL_CUT = 0.5;
  *  and half-sunk pieces, which all stand on top faces. */
 const TILT_BASE_MIN = 1.5;
 const TILTED: JoinKind[] = ['hinged', 'tilt45'];
+/** First half-sunk slot that is a chest lid (see joins.ts). */
+const CHEST_LID_SLOT = 18;
+/** Share of chest recipes that are closed (a half-sunk lid) rather than open (a hinged lid). */
+const CLOSED_CHEST = 0.5;
 const ROUND: PrimitiveType[] = ['cylinder', 'cone', 'sphere'];
 
 function pick<T>(rand: () => number, values: T[]): T {
@@ -388,6 +392,8 @@ interface Attempt {
 interface Plan {
   level: Level;
   types: PrimitiveType[];
+  /** A closed chest's half-sunk step uses only the chest-lid slots, which no other recipe uses. */
+  chest?: 'closed' | 'open';
 }
 
 /** Indices of pieces `join` may attach to. */
@@ -410,6 +416,7 @@ function slotsFor(join: JoinKind, plan: Plan, remaining: number): number[] {
   const slots: number[] = [];
   for (let s = 0; s < JOIN_SLOTS[join]; s++) {
     if (join === 'totem' && plan.level === 3 && s > LEVEL3_TOTEM_SLOT) continue;
+    if (join === 'halfSunk' && (s >= CHEST_LID_SLOT) !== (plan.chest === 'closed')) continue;
     if (added(join, s) > remaining || typesFor(join, s, plan.types).length === 0) continue;
     slots.push(s);
   }
@@ -467,26 +474,37 @@ function attempt(wasm: ManifoldToplevel, seed: number, settings: CleanSettings):
   const tilt = settings.level === 6 && extras.length > 0;
   const cutNeeded = settings.level === 5 && extras.length > 0;
   const cutMaybe = settings.level === 6 && joins.includes('cut') && rand() < OPTIONAL_CUT;
+  // ruling P24: with Half-sunk and Hinged lid on (and no 45° piece), a Level 6 recipe is a chest, either closed (the
+  // base and a half-sunk lid) or open (the base and a hinged lid, then stacks). Either lid is the level's extra,
+  // and the piece count is a cap, not a floor
+  const isChest =
+    tilt && extras.includes('hinged') && !extras.includes('tilt45') && regular.includes('halfSunk') && type === 'cube';
+  if (isChest) plan.chest = rand() < CLOSED_CHEST ? 'closed' : 'open';
+  const closed = plan.chest === 'closed';
+  const first: JoinKind[] = closed ? ['halfSunk'] : tilt ? extras : [];
+  const rest = plan.chest ? (closed ? [] : regular.filter((j) => j !== 'halfSunk')) : regular;
 
   let build = new Build(wasm);
   try {
-    // the tilted piece goes first, while the base's faces are free; later pieces keep clear of it. Its fit
-    // depends most on the base's proportions, so a failed lid draws a new base. An extra join that the shapes
-    // rule out ('none') can't be helped by another seed, so only 'fail' retries.
+    // the tilted piece (or a closed chest's lid) goes first, while the base's faces are free; later pieces keep
+    // clear of it. Its fit depends most on the base's proportions, so a failed lid draws a new base. An extra join
+    // that the shapes rule out ('none') can't be helped by another seed, so only 'fail' retries.
     let extrasOk = true;
     for (let t = 0; t < STEP_TRIES; t++) {
       if (t > 0) {
         build.delete();
         build = new Build(wasm);
       }
-      build.setBase(basePiece(type, baseSize(sizes, type, settings.level === 1 ? 0.5 : tilt ? TILT_BASE_MIN : 1)));
-      extrasOk = !tilt || oneStep(build, rand, sizes, extras, plan, 1) !== 'fail';
+      const min = settings.level === 1 ? 0.5 : tilt && !closed ? TILT_BASE_MIN : 1;
+      build.setBase(basePiece(type, baseSize(sizes, type, min)));
+      extrasOk = first.length === 0 || oneStep(build, rand, sizes, first, plan, 1) !== 'fail';
       if (extrasOk) break;
     }
     let failed = false;
-    while (build.count < wanted) {
-      const result = oneStep(build, rand, sizes, regular, plan, wanted - build.count);
-      if (result === 'fail') failed = true;
+    while (build.count < wanted && rest.length > 0) {
+      const result = oneStep(build, rand, sizes, rest, plan, wanted - build.count);
+      // a chest needs no more than its lid
+      if (result === 'fail' && !plan.chest) failed = true;
       if (result !== 'ok') break;
     }
     if (cutNeeded) extrasOk = oneStep(build, rand, sizes, ['cut'], plan, 0) !== 'fail' && extrasOk;

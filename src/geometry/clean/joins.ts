@@ -13,9 +13,10 @@ import { PRIMITIVES, type JoinKind, type Piece, type PrimitiveType, type Vec3 } 
  * |          |       |                                             | third -Z, third +Z                                         |
  * | totem    | 2     | count - 2                                   | 2 or 3 round pieces on the top-face centre: cylinders,     |
  * |          |       |                                             | the top one may be a cone or sphere instead                |
- * | halfSunk | 18    | axis + 2 * (spot + 3 * end)                 | axis: along X, along Z. spot: centred, flush to the -side  |
+ * | halfSunk | 20    | axis + 2 * (spot + 3 * end); 18 + axis      | axis: along X, along Z. spot: centred, flush to the -side  |
  * |          |       |                                             | edge, flush to the +side edge. end: centred along the edge,|
- * |          |       |                                             | flush to its - end, flush to its + end                     |
+ * |          |       |                                             | flush to its - end, flush to its + end. 18-19: a chest lid,|
+ * |          |       |                                             | centred, as long as the edge or one module shorter         |
  * | wing     | 24    | face + 4 * (plane + 2 * spot)               | face: +X, -X, +Z, -Z. plane: top, bottom. spot: centred,   |
  * |          |       |                                             | flush to the - edge, flush to the + edge                   |
  * | through  | 3     | axis                                        | X, Z, Y                                                    |
@@ -57,7 +58,7 @@ export interface Placed {
 export const JOIN_SLOTS: Record<JoinKind, number> = {
   stack: 5,
   totem: 2,
-  halfSunk: 18,
+  halfSunk: 20,
   wing: 24,
   through: 3,
   mirror: 6,
@@ -310,11 +311,20 @@ function halfSunk(ctx: JoinContext, t: Shape, slot: number): Piece | null {
   if (t.kind !== 'box' || !ctx.allowed.includes('cylinder')) return null;
   const axis = slot % 2 === 0 ? 0 : 2;
   const across = axis === 0 ? 2 : 0;
-  const spot = Math.floor(slot / 2) % 3;
-  const end = Math.floor(slot / 6);
+  const lid = slot >= 18;
+  const spot = lid ? 0 : Math.floor(slot / 2) % 3;
+  const end = lid ? 0 : Math.floor(slot / 6);
   // the buried half must stay inside the box: diameter within the top face and twice the height; like a chest lid,
-  // it is no longer than the edge it lies along
-  const ws = crossAndLength(ctx.rand, 'cylinder', axis, [Math.min(t.ext[across], 2 * t.ext[1]), 2 * t.ext[1]], t.ext[axis]);
+  // it is no longer than the edge it lies along (a chest lid: the edge or one module shorter)
+  const dHi = Math.min(t.ext[across], 2 * t.ext[1]);
+  let ws: Vec3 | null;
+  if (lid) {
+    const d = pickDims(ctx.rand, [0, t.ext[axis] - MODULE], [dHi, t.ext[axis]]);
+    ws = d && ([d[0], d[0], d[0]] as Vec3);
+    if (d && ws) ws[axis] = d[1];
+  } else {
+    ws = crossAndLength(ctx.rand, 'cylinder', axis, [dHi, 2 * t.ext[1]], t.ext[axis]);
+  }
   if (!ws) return null;
   const position = [...t.centre] as Vec3;
   position[1] = t.max[1];

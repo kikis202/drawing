@@ -159,8 +159,9 @@ describe('generateCleanForm', () => {
       expect(steps(spec).filter((s) => s.join === 'hinged' || s.join === 'tilt45')).toHaveLength(1);
       expect(tilted(spec)).toHaveLength(1);
       expect(spec.pieces.filter((p) => p.op === 'cut').length).toBeLessThanOrEqual(1);
+      // a chest is closed (a half-sunk lid) or open (one hinged lid), never a 45° piece
       const lid = generateCleanForm(wasm, seed, EXERCISE_SETTINGS[2]);
-      expect(steps(lid).filter((s) => s.join === 'hinged')).toHaveLength(1);
+      expect(steps(lid).filter((s) => s.join === 'hinged').length).toBeLessThanOrEqual(1);
       expect(steps(lid).filter((s) => s.join === 'tilt45')).toHaveLength(0);
     }
   }, 20_000);
@@ -187,6 +188,21 @@ describe('generateCleanForm', () => {
       if (steps(generateCleanForm(wasm, seed, EXERCISE_SETTINGS[1])).some((s) => s.join === 'totem')) totems++;
     }
     expect(totems).toBeGreaterThanOrEqual(120);
+  }, 60_000);
+
+  it('chests and lids makes closed and open chests', () => {
+    let closed = 0;
+    let open = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const spec = generateCleanForm(wasm, seed, EXERCISE_SETTINGS[2]);
+      const joins = steps(spec).map((s) => s.join);
+      if (joins.includes('hinged')) open++;
+      else if (joins.includes('halfSunk')) closed++;
+      else throw new Error(`seed ${seed} is neither: ${joins.join(', ')}`);
+      expect(levelNote(EXERCISE_SETTINGS[2])).toBeNull();
+    }
+    expect(closed).toBeGreaterThanOrEqual(70);
+    expect(open).toBeGreaterThanOrEqual(70);
   }, 60_000);
 
   it('variation keeps the recipe and changes proportions', () => {
@@ -232,10 +248,11 @@ describe('generateCleanForm', () => {
     }
   }, 30_000);
 
-  it('chests and lids has a hinged lid in at least 99% of seeds', () => {
+  it('chests and lids has a hinged or chest lid in at least 99% of seeds', () => {
     let lids = 0;
     for (let seed = 1; seed <= 300; seed++) {
-      if (steps(generateCleanForm(wasm, seed, EXERCISE_SETTINGS[2])).some((s) => s.join === 'hinged')) lids++;
+      const joins = steps(generateCleanForm(wasm, seed, EXERCISE_SETTINGS[2]));
+      if (joins.some((s) => s.join === 'hinged' || (s.join === 'halfSunk' && s.slot >= 18))) lids++;
     }
     expect(lids).toBeGreaterThanOrEqual(297);
   }, 60_000);
