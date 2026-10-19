@@ -65,7 +65,26 @@ test('touch drag rotates the expanded view', async ({ page, context }) => {
   await expect(readout(page)).not.toHaveText(before!)
 })
 
-test('a drag on the floating view does not rotate or expand it', async ({ page, context }) => {
+test('the last tile clears the floating view at the end of a scrolling grid', async ({ page }) => {
+  await page.getByRole('button', { name: 'Settings' }).tap()
+  await settingsSheet(page).getByRole('group', { name: 'Pattern' }).getByRole('button', { name: 'Grid', exact: true }).tap()
+  await page.getByRole('button', { name: 'Done' }).tap()
+  await expect(tiles(page)).toHaveCount(18)
+  await sheet(page).evaluate((el) => el.scrollTo(0, el.scrollHeight))
+  const last = tiles(page).last()
+  const label = (await last.locator('.shot-label').boundingBox())!
+  const fab = (await floating(page).boundingBox())!
+  const overlaps =
+    label.x < fab.x + fab.width && label.x + label.width > fab.x && label.y < fab.y + fab.height && label.y + label.height > fab.y
+  expect(overlaps).toBe(false)
+  const insideTile = await last.evaluate((el, p) => {
+    const hit = document.elementFromPoint(p.x, p.y)
+    return !!hit && el.contains(hit)
+  }, { x: label.x + label.width / 2, y: label.y + label.height / 2 })
+  expect(insideTile).toBe(true)
+})
+
+test('a drag on the floating view neither expands it nor rotates the object', async ({ page, context }) => {
   await expect(readout(page)).toHaveCount(0)
   const box = (await floating(page).boundingBox())!
   const cdp = await context.newCDPSession(page)
@@ -76,6 +95,9 @@ test('a drag on the floating view does not rotate or expand it', async ({ page, 
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + i * 15, y }] })
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
   await expect(floating(page)).toBeVisible()
+  // the view was not rotated: it still shows the first Turntable shot's turn and a 20° tilt
+  await expand(page)
+  await expect(readout(page)).toHaveText('30° turn, 20° tilt')
 })
 
 test('settings open in a bottom sheet', async ({ page }) => {

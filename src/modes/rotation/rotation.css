@@ -573,7 +573,8 @@
 
 .rotation-phone .sheet {
   flex: 1 1 auto;
-  padding: 14px 14px calc(var(--bar-h) + 36px);
+  /* The sheet ends at the bar's edge; clear the floating view (12px up, 112px tall) plus a margin. */
+  padding: 14px 14px calc(112px + 24px);
   scrollbar-gutter: auto;
 }
 

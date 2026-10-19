@@ -112,6 +112,13 @@ function RotationStudy({ store, onNoWebGL }: Props) {
   const phone = useIsPhone();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // Leaving the phone layout closes the sheet and the full-screen view, so neither returns on its own.
+  useEffect(() => {
+    if (!phone) {
+      setSettingsOpen(false);
+      setExpanded(false);
+    }
+  }, [phone]);
 
   useLayoutEffect(() => {
     // One shot renderer for the mode's lifetime: WebGL contexts are scarce.
