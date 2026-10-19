@@ -8,7 +8,7 @@ import { DEFAULT_RENDER } from '../../../src/render/render-options';
 import type { RenderOptions } from '../../../src/render/render-options';
 import { ringViews } from '../../../src/views/spacing';
 
-const mesh = (): FormMesh => ({ positions: new Float32Array(9), indices: new Uint32Array(3), volume: 1, bounds: { min: [0, 0, 0], max: [0, 0, 0] }, axes: new Float32Array(0) });
+const mesh = (): FormMesh => ({ positions: new Float32Array(9), indices: new Uint32Array(3), volume: 1, bounds: { min: [0, 0, 0], max: [0, 0, 0] }, axes: new Float32Array(0), creaseDeg: 30 });
 const shotsOf = (n: number): Shot[] =>
   ringViews(n).map((view, i) => ({ id: `g${i}`, view, source: 'generated' as const }));
 

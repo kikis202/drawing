@@ -48,6 +48,10 @@ function pieceAxes(pieces: Piece[]): number[] {
   return out;
 }
 
+/** Clean uses 29 so a 60 degree hinged lid (exactly 30 from the side face) always counts as a crease. */
+const CLEAN_CREASE_DEG = 29;
+const FREEFORM_CREASE_DEG = 30;
+
 /** Builds the form centred on its bounding box and scaled to bounding radius 1. */
 export function buildForm(wasm: ManifoldToplevel, spec: FormSpec): FormMesh {
   const manifold = buildManifold(wasm, spec.pieces);
@@ -83,7 +87,7 @@ export function buildForm(wasm: ManifoldToplevel, spec: FormSpec): FormMesh {
       max: [0, 1, 2].map((k) => norm(max[k], k)) as Vec3,
     };
     const axes = Float32Array.from(pieceAxes(spec.pieces), (v, i) => norm(v, i % 3));
-    return { positions, indices: new Uint32Array(mesh.triVerts), volume: volume * scale ** 3, bounds, axes };
+    return { positions, indices: new Uint32Array(mesh.triVerts), volume: volume * scale ** 3, bounds, axes, creaseDeg: spec.style === 'clean' ? CLEAN_CREASE_DEG : FREEFORM_CREASE_DEG };
   } finally {
     manifold.delete();
   }

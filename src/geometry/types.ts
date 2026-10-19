@@ -50,4 +50,6 @@ export interface FormMesh {
   /** xyz pairs: one segment per non-sphere piece (cutters included), along the piece's local Y after
    *  rotation, through its position, length = size[1] x 1.3, in normalised space. */
   axes: Float32Array;
+  /** Dihedral angle above which edges are creased: smoothing stops and a line is drawn. */
+  creaseDeg: number;
 }

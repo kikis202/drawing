@@ -31,7 +31,7 @@ const spec: FormSpec = {
   seed: 0,
   pieces: [{ type: 'cube', size: [1, 1, 1], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' }],
 };
-const mesh: FormMesh = { positions: new Float32Array(9), indices: new Uint32Array(3), volume: 1, bounds: { min: [0, 0, 0], max: [0, 0, 0] }, axes: new Float32Array(0) };
+const mesh: FormMesh = { positions: new Float32Array(9), indices: new Uint32Array(3), volume: 1, bounds: { min: [0, 0, 0], max: [0, 0, 0] }, axes: new Float32Array(0), creaseDeg: 30 };
 
 const withForm = (s: RotationState = initialState, rand = 0) => setForm(s, spec, mesh, rand);
 const view = (turn: number, tilt: number) => ({ turn, tilt });

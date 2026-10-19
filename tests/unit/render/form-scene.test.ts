@@ -4,12 +4,14 @@ import type { ManifoldToplevel } from 'manifold-3d';
 import { buildForm } from '../../../src/geometry/build-form';
 import type { FormMesh } from '../../../src/geometry/types';
 import { FormScene } from '../../../src/render/form-scene';
+import { buildEdgeAdjacency, creaseSegments } from '../../../src/render/edges';
 import { cameraPosition, fovForAspect, lensDistance } from '../../../src/views/camera';
 import { DEFAULT_RENDER } from '../../../src/render/render-options';
 import type { RenderOptions } from '../../../src/render/render-options';
 import { getTestManifold } from '../../helpers/manifold';
 
 let mesh: FormMesh;
+let lidMesh: FormMesh;
 beforeAll(async () => {
   const wasm: ManifoldToplevel = await getTestManifold();
   mesh = buildForm(wasm, {
@@ -19,6 +21,47 @@ beforeAll(async () => {
     pieces: [
       { type: 'cube', size: [1, 1, 1], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' },
     ],
+  });
+  // a 2-cube with a lid hinged on its +Z top edge and opened 60 degrees: 30 degrees from the side face
+  lidMesh = buildForm(wasm, {
+    version: 2,
+    style: 'clean',
+    seed: 0,
+    pieces: [
+      { type: 'cube', size: [2, 2, 2], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' },
+      { type: 'cube', size: [1, 0.5, 1], rotation: [60, 0, 0], position: [0, 1.308, 0.5335], op: 'add' },
+    ],
+  });
+});
+
+describe('clean crease angle', () => {
+  it('buildForm sets creaseDeg from the style', () => {
+    expect(lidMesh.creaseDeg).toBe(29);
+    expect(mesh.creaseDeg).toBe(30);
+  });
+
+  it('draws the line where a 60 degree lid meets the box', () => {
+    const adj = buildEdgeAdjacency(lidMesh);
+    expect(creaseSegments(adj, lidMesh.creaseDeg).length).toBeGreaterThan(creaseSegments(adj, 31).length);
+  });
+
+  it('keeps flat box faces flat-shaded next to the lid', () => {
+    const geo = surfaceOf(new FormScene(lidMesh)).geometry as THREE.BufferGeometry;
+    const pos = geo.getAttribute('position');
+    const nor = geo.getAttribute('normal');
+    const lo = lidMesh.bounds.min;
+    const hi = lidMesh.bounds.max;
+    let checked = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const p = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+      // vertices on the box's bottom and X side faces; each copy carries one face's normal
+      const onFace = Math.abs(p[1] - lo[1]) < 1e-5 || Math.abs(p[0] - lo[0]) < 1e-5 || Math.abs(p[0] - hi[0]) < 1e-5;
+      if (!onFace) continue;
+      const axisAligned = Math.max(Math.abs(nor.getX(i)), Math.abs(nor.getY(i)), Math.abs(nor.getZ(i)));
+      expect((Math.acos(Math.min(1, axisAligned)) * 180) / Math.PI).toBeLessThan(1);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });
 

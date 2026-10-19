@@ -10,7 +10,6 @@ import type { RenderOptions } from './render-options';
 import { buildEdgeAdjacency, creaseSegments, silhouetteSegments } from './edges';
 import type { EdgeAdjacency } from './edges';
 
-const CREASE_DEG = 30;
 const GROUND_COLOUR = '#CDD2D7';
 const HORIZON_DISTANCE = 1000;
 const HORIZON_HALF_WIDTH = 5000;
@@ -94,7 +93,7 @@ export class FormScene {
     const base = new THREE.BufferGeometry();
     base.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
     base.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
-    this.meshGeometry = toCreasedNormals(base, (CREASE_DEG * Math.PI) / 180);
+    this.meshGeometry = toCreasedNormals(base, (mesh.creaseDeg * Math.PI) / 180);
     base.dispose();
     // Steep enough that wide line quads at concave creases don't fail the depth test and
     // show as a blue hidden-line fringe beside the visible line.
@@ -119,7 +118,7 @@ export class FormScene {
     this.scene.add(this.surface);
 
     this.adjacency = buildEdgeAdjacency(mesh);
-    this.creases = creaseSegments(this.adjacency, CREASE_DEG);
+    this.creases = creaseSegments(this.adjacency, mesh.creaseDeg);
 
     this.visibleMaterial = new LineMaterial({ color: '#26292D', linewidth: 2 });
     this.hiddenMaterial = new LineMaterial({
