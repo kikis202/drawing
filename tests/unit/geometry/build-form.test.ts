@@ -147,6 +147,17 @@ describe('buildForm bounds and axes', () => {
     expect(Math.abs(axisDirection(buildForm(wasm, spec([lone])).axes)[0])).toBeCloseTo(1, 4);
   });
 
+  it('centres and scales axes and bounds of an off-centre union', () => {
+    const form = buildForm(wasm, spec([cube([0, 0, 0]), cube([2, 0, 0])]));
+    const s = 1 / Math.sqrt(2.75);
+    expect(form.axes).toHaveLength(12);
+    const mid = (i: number) => (form.axes[i * 6] + form.axes[i * 6 + 3]) / 2;
+    expect(mid(0)).toBeCloseTo(-s, 4);
+    expect(mid(1)).toBeCloseTo(s, 4);
+    expect(Math.abs(form.axes[1])).toBeCloseTo(0.65 * s, 4);
+    expect(form.bounds.max[0]).toBeCloseTo(1.5 * s, 4);
+  });
+
   it('spheres have no axis; cutters do', () => {
     const sphere: Piece = { type: 'sphere', size: [2, 2, 2], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' };
     const cut: Piece = { type: 'cylinder', size: [0.5, 3, 0.5], rotation: [0, 0, 0], position: [0, 0, 0], op: 'cut' };
