@@ -6,6 +6,7 @@ import { saveSettings, SETTINGS_KEY } from '../../../src/modes/rotation/settings
 import type { RotationState } from '../../../src/modes/rotation/state';
 import type { ManifoldToplevel } from '../../../src/geometry/manifold';
 import type { FormSpec } from '../../../src/geometry/types';
+import { planShots } from '../../../src/views/patterns';
 import { getTestManifold } from '../../helpers/manifold';
 
 let wasm: ManifoldToplevel;
@@ -31,6 +32,8 @@ const cube: FormSpec = {
   seed: 0,
   pieces: [{ type: 'cube', size: [1, 1, 1], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' }],
 };
+
+const savedBase = { id: 's', createdAt: 1, form: cube, settings: applyExercise(initialState, 'carved').settings, hidden: false };
 
 describe('rotation store', () => {
   it('store.newObject uses the clean generator for clean style', () => {
@@ -137,12 +140,31 @@ describe('rotation store', () => {
   it('openSaved loads the form with the saved views as kept custom shots', () => {
     const store = createRotationStore(wasm);
     store.dispatch(toggleKeep, 'g0');
-    store.openSaved({ form: cube, shots: [{ view: { turn: 10, tilt: 5 } }, { view: { turn: 200, tilt: -40 } }] });
+    store.openSaved({
+      ...savedBase,
+      shots: [
+        { view: { turn: 10, tilt: 5 }, label: 'a', image: new Blob() },
+        { view: { turn: 200, tilt: -40 }, label: 'b', image: new Blob() },
+      ],
+    });
     const s = store.state.value;
     expect(s.form?.spec).toEqual(cube);
     expect(s.custom.map((c) => c.view)).toEqual([{ turn: 10, tilt: 5 }, { turn: 200, tilt: -40 }]);
     expect(s.kept).toEqual(s.custom.map((c) => c.id));
     expect(new Set([...s.generated, ...s.custom].map((x) => x.id)).size).toBe(s.generated.length + 2);
-    expect(s.generated).toHaveLength(4);
+    expect(s.generated).toHaveLength(planShots(savedBase.settings.plan).length);
+  });
+
+  it('opening a set restores its exercise settings', () => {
+    const store = createRotationStore(wasm);
+    store.newObject();
+    const before = store.state.value.form!.version;
+    store.openSaved({ ...savedBase, shots: [{ view: { turn: 10, tilt: 5 }, label: 'a', image: new Blob() }] });
+    const s = store.state.value;
+    expect(s.settings).toEqual(savedBase.settings);
+    expect(s.settings.exercise).toBe('carved');
+    expect(s.form?.spec).toEqual(cube);
+    expect(s.form!.version).toBe(before + 1);
+    expect(JSON.parse(data.get(SETTINGS_KEY)!)).toMatchObject({ exercise: 'carved' });
   });
 });

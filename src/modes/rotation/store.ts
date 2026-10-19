@@ -4,18 +4,11 @@ import { buildForm } from '../../geometry/build-form';
 import { generateCleanForm, varyCleanForm } from '../../geometry/clean/generate-clean';
 import { generateForm } from '../../geometry/generate';
 import type { ManifoldToplevel } from '../../geometry/manifold';
-import type { FormSpec } from '../../geometry/types';
-import type { View } from '../../views/types';
+import type { SavedSet } from '../../storage/saved-sets';
 import type { ExerciseId } from './exercises';
 import { loadSettings, saveSettings } from './settings-storage';
-import { applyExercise as applyExerciseTo, initialState, setForm } from './state';
-import type { RotationState } from './state';
-
-/** The part of a saved set that opening one needs. */
-export interface OpenableSet {
-  form: FormSpec;
-  shots: { view: View }[];
-}
+import { applyExercise as applyExerciseTo, copyPlan, initialState, setForm } from './state';
+import type { RotationState, Settings } from './state';
 
 export function createRotationStore(wasm: ManifoldToplevel) {
   const state: Signal<RotationState> = signal({ ...initialState, settings: loadSettings() });
@@ -62,8 +55,10 @@ export function createRotationStore(wasm: ManifoldToplevel) {
     });
   }
 
-  function openSaved(set: OpenableSet): void {
-    const withForm = setForm(state.value, set.form, buildForm(wasm, set.form), Math.random());
+  /** Restores the set's settings, form and views without generating anything. */
+  function openSaved(set: SavedSet): void {
+    const settings: Settings = { ...set.settings, plan: copyPlan(set.settings.plan) };
+    const withForm = setForm({ ...state.value, settings }, set.form, buildForm(wasm, set.form), Math.random());
     const custom = set.shots.map((shot, i) => ({
       id: `c${withForm.nextCustomId + i}`,
       view: { ...shot.view },

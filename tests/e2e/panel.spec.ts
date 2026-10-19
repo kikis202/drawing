@@ -59,7 +59,7 @@ test('choosing an exercise applies it and makes a new object', async ({ page }) 
   await expect(aid(page, 'Centre lines')).toHaveAttribute('aria-pressed', 'true')
   const after = await renderedSrcs(page, 8)
   expect(after).not.toContain(before)
-  await expect(tiles(page).first().getByRole('button')).toHaveAccessibleName('30° turn, 30° tilt')
+  await expect(tiles(page).first().locator('.shot-snap')).toHaveAccessibleName('30° turn, 30° tilt')
 })
 
 test('changing a pattern re-renders without a new object', async ({ page }) => {
@@ -114,7 +114,7 @@ test('grid shows tilt rows as rows', async ({ page }) => {
   expect(withMap[1].x).toBe(withMap[0].x)
   expect(withMap[1].y).toBeGreaterThan(withMap[0].y)
   expect(new Set(withMap.slice(1, 7).map((t) => t.y)).size).toBe(1)
-  await expect(tiles(page).first().getByRole('button')).toHaveAccessibleName('Top view (map)')
+  await expect(tiles(page).first().locator('.shot-snap')).toHaveAccessibleName('Top view (map)')
 })
 
 test('variation is disabled for Freeform', async ({ page }) => {
@@ -198,7 +198,7 @@ test('a sequence starts from the live view', async ({ page }) => {
   const live = (await readout(page).textContent())!
   await pattern(page, 'Sequence').click()
   await expect(tiles(page)).toHaveCount(6)
-  await expect(tiles(page).first().getByRole('button')).toHaveAccessibleName(live)
+  await expect(tiles(page).first().locator('.shot-snap')).toHaveAccessibleName(live)
 
   // later drags don't move it, until Start from live view
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -207,9 +207,9 @@ test('a sequence starts from the live view', async ({ page }) => {
   await page.mouse.up()
   const moved = (await readout(page).textContent())!
   expect(moved).not.toBe(live)
-  await expect(tiles(page).first().getByRole('button')).toHaveAccessibleName(live)
+  await expect(tiles(page).first().locator('.shot-snap')).toHaveAccessibleName(live)
   await page.getByRole('button', { name: 'Start from live view' }).click()
-  await expect(tiles(page).first().getByRole('button')).toHaveAccessibleName(moved)
+  await expect(tiles(page).first().locator('.shot-snap')).toHaveAccessibleName(moved)
 })
 
 test('a large grid keeps tiles readable and scrolls to its last column', async ({ page }) => {

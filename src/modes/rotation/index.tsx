@@ -2,7 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { loadManifold } from '../../geometry/manifold';
 import { FormScene } from '../../render/form-scene';
 import { ShotRenderer } from '../../render/shot-renderer';
+import { renderKey } from '../../render/render-options';
 import type { RenderOptions } from '../../render/render-options';
+import { downloadBlob, zipFilename } from '../../storage/download';
+import { saveSet, shotFilename, zipSet } from '../../storage/saved-sets';
+import type { SavedShot } from '../../storage/saved-sets';
 import { planColumns } from '../../views/patterns';
 import { applyDrag, applyKey, easeInOut, interpolateView } from '../../views/pose';
 import type { Shot } from '../../views/types';
@@ -12,8 +16,11 @@ import { CustomisePanel } from './components/CustomisePanel';
 import { ExercisePanel } from './components/ExercisePanel';
 import { LiveView } from './components/LiveView';
 import { PhoneBar } from './components/PhoneBar';
+import { SavedPanel } from './components/SavedPanel';
+import { SaveStatus } from './components/SaveStatus';
 import { ShotsPanel } from './components/ShotsPanel';
 import { TopBar } from './components/TopBar';
+import { collectImages } from './save-shots';
 import { ShotImages, shotKey } from './shot-images';
 import {
   allShots,
@@ -36,6 +43,19 @@ import { useIsPhone } from './use-phone';
 import './rotation.css';
 
 type Store = ReturnType<typeof createRotationStore>;
+
+const CHANGED_WHILE_SAVING = "Couldn't save: the object changed while saving. Try again.";
+const SAVE_FAILURES = {
+  blocked: "Couldn't save: this browser is blocking storage. Download the shots instead.",
+  quota: "Couldn't save: browser storage is full. Delete an old set or download the shots instead.",
+  unknown: "Couldn't save. Download the shots instead.",
+};
+
+/** The outcome of the last save; `shots` are the images in hand when it failed, offered as a download. */
+interface SaveNotice {
+  text: string;
+  shots?: SavedShot[];
+}
 
 const SNAP_MS = 450;
 /** The Grid pattern can't fit more than this many columns across a phone. */
@@ -112,6 +132,9 @@ function RotationStudy({ store, onNoWebGL }: Props) {
   const phone = useIsPhone();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [savedOpen, setSavedOpen] = useState(false);
+  const [notice, setNotice] = useState<SaveNotice | null>(null);
+  const saving = useRef(false);
   // Leaving the phone layout closes the sheet and the full-screen view, so neither returns on its own.
   useEffect(() => {
     if (!phone) {
@@ -224,8 +247,62 @@ function RotationStudy({ store, onNoWebGL }: Props) {
 
   const columns = planColumns(settings.plan);
   const newObject = () => regenerate(store.newObject);
-  const save = () => {
-    // Saving arrives in a later task.
+
+  /** Saves the ticked shots as one set. All or nothing: a change to the object mid-save saves nothing. */
+  const save = async () => {
+    const start = store.state.value;
+    const queue = shotImages.current;
+    const shots = keptShots(start);
+    if (saving.current || !queue || !start.form || shots.length === 0) return;
+    saving.current = true;
+    try {
+      const collected = await collectImages(shots, queue);
+      const now = store.state.value;
+      const unchanged =
+        now.form?.version === start.form.version &&
+        renderKey(now.settings.render) === renderKey(start.settings.render);
+      if (!collected.ok) {
+        setNotice({ text: collected.reason === 'superseded' ? CHANGED_WHILE_SAVING : SAVE_FAILURES.unknown });
+        return;
+      }
+      if (!unchanged) {
+        setNotice({ text: CHANGED_WHILE_SAVING });
+        return;
+      }
+      const result = await saveSet({
+        form: start.form.spec,
+        settings: start.settings,
+        hidden: start.hiddenShotId !== null,
+        shots: collected.shots,
+      });
+      setNotice(
+        result.ok
+          ? { text: collected.shots.length === 1 ? 'Saved 1 shot.' : `Saved ${collected.shots.length} shots.` }
+          : { text: SAVE_FAILURES[result.reason], shots: collected.shots },
+      );
+    } finally {
+      saving.current = false;
+    }
+  };
+
+  const downloadNoticeShots = async () => {
+    if (!notice?.shots) return;
+    downloadBlob(await zipSet({ shots: notice.shots }), zipFilename());
+  };
+
+  const downloadShot = async (shot: Shot) => {
+    try {
+      const blob = await shotImages.current!.blob(shot);
+      downloadBlob(blob, shotFilename({ view: shot.view, role: shot.role }));
+    } catch {
+      setNotice({ text: "Couldn't download that shot. Try again." });
+    }
+  };
+
+  const openSet = (set: Parameters<Store['openSaved']>[0]) => {
+    cancelSnap();
+    setNotice(null);
+    store.openSaved(set);
   };
 
   const liveView = (variant: 'panel' | 'floating' | 'full') => (
@@ -280,7 +357,7 @@ function RotationStudy({ store, onNoWebGL }: Props) {
 
   return (
     <div class={`rotation${phone ? ' rotation-phone' : ''}`}>
-      <TopBar onNewObject={phone ? newObject : undefined} />
+      <TopBar onNewObject={phone ? newObject : undefined} onSaved={() => setSavedOpen(true)} />
       <ContactSheet
         shots={allShots(s)}
         urls={urls}
@@ -292,11 +369,15 @@ function RotationStudy({ store, onNoWebGL }: Props) {
         onSnap={snap}
         onToggleKeep={(id) => store.dispatch(toggleKeep, id)}
         onReveal={() => store.dispatch(reveal)}
+        onDownload={(shot) => void downloadShot(shot)}
       />
       {phone ? (
         <>
           {liveView(expanded ? 'full' : 'floating')}
-          <PhoneBar keptCount={keptCount} onSettings={() => setSettingsOpen(true)} onSave={save} />
+          {notice && (
+            <SaveStatus phone text={notice.text} onDownload={notice.shots ? () => void downloadNoticeShots() : undefined} />
+          )}
+          <PhoneBar keptCount={keptCount} onSettings={() => setSettingsOpen(true)} onSave={() => void save()} />
           <BottomSheet open={settingsOpen} title="Settings" onClose={() => setSettingsOpen(false)}>
             {panels}
           </BottomSheet>
@@ -306,12 +387,16 @@ function RotationStudy({ store, onNoWebGL }: Props) {
           {liveView('panel')}
           <div class="panel">{panels}</div>
           <div class="panel-save">
-            <button type="button" class="btn btn-primary save" disabled={keptCount === 0} onClick={save}>
+            {notice && (
+              <SaveStatus text={notice.text} onDownload={notice.shots ? () => void downloadNoticeShots() : undefined} />
+            )}
+            <button type="button" class="btn btn-primary save" disabled={keptCount === 0} onClick={() => void save()}>
               {keptCount === 1 ? 'Save 1 shot' : `Save ${keptCount} shots`}
             </button>
           </div>
         </aside>
       )}
+      <SavedPanel open={savedOpen} onClose={() => setSavedOpen(false)} onOpenSet={openSet} />
     </div>
   );
 }

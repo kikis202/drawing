@@ -80,8 +80,8 @@ test('capture view adds a kept "custom" shot', async ({ page }) => {
   await expect(tiles(page)).toHaveCount(5)
   const fifth = tiles(page).nth(4)
   await expect(fifth.getByRole('checkbox')).toBeChecked()
-  await expect(fifth.getByRole('button')).toHaveAttribute('aria-current', 'true')
-  await expect(fifth.getByRole('button')).toHaveAccessibleName((await readout(page).textContent())!)
+  await expect(fifth.locator('.shot-snap')).toHaveAttribute('aria-current', 'true')
+  await expect(fifth.locator('.shot-snap')).toHaveAccessibleName((await readout(page).textContent())!)
 })
 
 test('hidden lines toggle re-renders the shots', async ({ page }) => {

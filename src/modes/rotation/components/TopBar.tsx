@@ -5,10 +5,11 @@ import { HeaderActionsContext } from '../../../shell/App';
 interface Props {
   /** Phones have no Exercise section on screen, so New object sits in the header there. */
   onNewObject?: () => void;
+  onSaved: () => void;
 }
 
 /** The mode's buttons, portalled into the app header. New object lives in the Exercise section on desktop. */
-export function TopBar({ onNewObject }: Props) {
+export function TopBar({ onNewObject, onSaved }: Props) {
   const target = useContext(HeaderActionsContext);
   if (!target) return null;
   return createPortal(
@@ -18,8 +19,7 @@ export function TopBar({ onNewObject }: Props) {
           New object
         </button>
       )}
-      {/* Saved sets arrive with saving. */}
-      <button type="button" class="btn btn-quiet" disabled>
+      <button type="button" class="btn btn-quiet" onClick={onSaved}>
         Saved
       </button>
     </>,

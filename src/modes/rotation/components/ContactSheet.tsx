@@ -19,6 +19,7 @@ interface Props {
   onSnap: (shot: Shot) => void;
   onToggleKeep: (id: string) => void;
   onReveal: () => void;
+  onDownload: (shot: Shot) => void;
 }
 
 /**
@@ -36,6 +37,7 @@ export function ContactSheet({
   onSnap,
   onToggleKeep,
   onReveal,
+  onDownload,
 }: Props) {
   const ref = useRef<HTMLUListElement>(null);
   const [area, setArea] = useState<{ w: number; h: number } | null>(null);
@@ -81,6 +83,7 @@ export function ContactSheet({
           onSnap={onSnap}
           onToggleKeep={onToggleKeep}
           onReveal={onReveal}
+          onDownload={onDownload}
         />
       ))}
     </ul>
