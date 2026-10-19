@@ -1,4 +1,5 @@
 import type { Manifold, ManifoldToplevel } from '../manifold';
+import { buildManifold } from '../build-form';
 import { mulberry32 } from '../prng';
 import { pieceManifold } from '../primitives';
 import { PRIMITIVES, type FormSpec, type JoinKind, type Piece, type PrimitiveType, type RecipeStep, type Vec3 } from '../types';
@@ -59,6 +60,19 @@ const VARIATION_TRIES = 12;
 /** Base pieces one variation number tries, each with a search of at most SEARCH_BUDGET draws. */
 const VARIATION_BASES = 8;
 const SEARCH_BUDGET = 60;
+/** A base is given up once one step has used all its draws on it this many times. */
+const BASE_MISSES = 2;
+/** Work one varyCleanForm call may spend over all its variation numbers and bases, so it stays quick: one unit
+ *  per draw plus OP_COST per mesh operation. A count, not a clock, so the result stays deterministic. */
+const VARY_BUDGET = 12000;
+const OP_COST = 3;
+/** Relative cost of making and combining a piece's mesh, by how many facets it has. */
+const MESH_COST: Record<PrimitiveType, number> = { cube: 1, pyramid: 1, cylinder: 2, cone: 2, sphere: 6 };
+const meshCost = (pieces: Piece[]) => pieces.reduce((c, p) => c + MESH_COST[p.type], 0);
+/** A mesh intersection test costs about this many other mesh operations. */
+const MESH_TEST_OPS = 10;
+/** Most tied attempts completed leniently when no variation passes. */
+const FALLBACK_CANDIDATES = 3;
 const MIN_GROWTH = 1.08;
 const MAX_EXTENT_RATIO = 2;
 const MIN_CUT = 0.1;
@@ -66,6 +80,8 @@ const MAX_CUT = 0.5;
 /** Overlap volume below this is a touching face, not an overlap. */
 const OVERLAP_EPS = 1e-6;
 const EPS = 1e-9;
+/** Distances below this are touching, not overlapping. */
+const LINEAR_EPS = 1e-6;
 /** At Level 3 a totem is base + 2 round pieces (slot 0); from Level 4 up to 3 (slot 1). */
 const LEVEL3_TOTEM_SLOT = 0;
 const OPTIONAL_CUT = 0.5;
@@ -87,6 +103,17 @@ function isSingleComponent(m: Manifold): boolean {
   return count === 1;
 }
 
+/** True when the pieces build as one component along the renderer's path (`buildManifold`). Building a form
+ *  step by step can disagree on tangent contacts, so every returned form is checked this way. */
+function rendersAsOne(wasm: ManifoldToplevel, pieces: Piece[]): boolean {
+  const m = buildManifold(wasm, pieces);
+  try {
+    return isSingleComponent(m);
+  } finally {
+    m.delete();
+  }
+}
+
 /** The overall bounds of `ms` are within 2 : 1. */
 function withinExtent(ms: Manifold[]): boolean {
   const boxes = ms.map((m) => m.boundingBox());
@@ -105,10 +132,58 @@ function sharedVolume(a: Manifold, b: Manifold): number {
   }
 }
 
-function boxesOverlap(a: Manifold, b: Manifold): boolean {
-  const ba = a.boundingBox();
-  const bb = b.boundingBox();
-  return [0, 1, 2].every((k) => ba.min[k] < bb.max[k] - EPS && bb.min[k] < ba.max[k] - EPS);
+/** A piece's world bounds, and what it is for the quick overlap test: a box, or a cylinder along `axis`. */
+interface Solid {
+  kind: 'box' | 'cylinder' | 'other';
+  min: Vec3;
+  max: Vec3;
+  axis: number;
+}
+
+/** World axis of a quarter-turned piece's local +Y (rotations X, then Y, then Z, as manifold applies them). */
+function upAxis(rotation: Vec3): number {
+  const [rx, ry, rz] = rotation.map((d) => (d * Math.PI) / 180);
+  let [x, y, z] = [0, Math.cos(rx), Math.sin(rx)];
+  [x, z] = [x * Math.cos(ry) + z * Math.sin(ry), -x * Math.sin(ry) + z * Math.cos(ry)];
+  [x, y] = [x * Math.cos(rz) - y * Math.sin(rz), x * Math.sin(rz) + y * Math.cos(rz)];
+  const a = [x, y, z].map(Math.abs);
+  return a.indexOf(Math.max(...a));
+}
+
+function solidOf(piece: Piece, m: Manifold): Solid {
+  const { min, max } = m.boundingBox();
+  const turned = quarterTurned(piece);
+  const kind = turned && piece.type === 'cube' ? 'box' : turned && piece.type === 'cylinder' ? 'cylinder' : 'other';
+  return { kind, min: [...min] as Vec3, max: [...max] as Vec3, axis: kind === 'cylinder' ? upAxis(piece.rotation) : 1 };
+}
+
+/** Per-axis overlap of two bounds (negative when apart). */
+const boundsOverlap = (a: Solid, b: Solid) =>
+  [0, 1, 2].map((k) => Math.min(a.max[k], b.max[k]) - Math.max(a.min[k], b.min[k]));
+
+/** Whether two pieces share volume, from their bounds: exact for box-box, and for box-cylinder and parallel
+ *  cylinders up to the facets (a cylinder counts as a true circle, so a piece within a facet's depth of it
+ *  counts as overlapping). Null when only the mesh can tell. */
+function quickOverlap(a: Solid, b: Solid): boolean | null {
+  if (boundsOverlap(a, b).some((d) => d <= LINEAR_EPS)) return false;
+  if (a.kind === 'box' && b.kind === 'box') return true;
+  const centre = (s: Solid, k: number) => (s.min[k] + s.max[k]) / 2;
+  const radius = (s: Solid) => (s.max[(s.axis + 1) % 3] - s.min[(s.axis + 1) % 3]) / 2;
+  if (a.kind === 'cylinder' && b.kind === 'cylinder' && a.axis === b.axis) {
+    const d = Math.hypot(...[0, 1, 2].filter((k) => k !== a.axis).map((k) => centre(a, k) - centre(b, k)));
+    return d < radius(a) + radius(b) - LINEAR_EPS;
+  }
+  const cyl = a.kind === 'cylinder' && b.kind === 'box' ? a : b.kind === 'cylinder' && a.kind === 'box' ? b : null;
+  if (!cyl) return null;
+  const box = cyl === a ? b : a;
+  let d2 = 0;
+  for (const k of [0, 1, 2]) {
+    if (k === cyl.axis) continue;
+    const c = centre(cyl, k);
+    const d = Math.max(box.min[k] - c, 0, c - box.max[k]);
+    d2 += d * d;
+  }
+  return Math.sqrt(d2) < radius(cyl) - LINEAR_EPS;
 }
 
 /** Piece types the level lets a join add. */
@@ -184,6 +259,8 @@ class Build {
   /** One manifold per piece (cutters included), for overlap and cut checks. */
   private parts: Manifold[] = [];
   private form: Manifold | undefined;
+  /** Mesh operations (pieces made, booleans, and pieces rebuilt for the renderer check) done so far: the costly part. */
+  ops = 0;
   /** The form before each committed step, and that step's piece count, for `undo()`. */
   private history: { form: Manifold; pieces: number }[] = [];
   private wasm: ManifoldToplevel;
@@ -211,6 +288,7 @@ class Build {
     let keep = false;
     try {
       for (const p of placed) made.push(pieceManifold(this.wasm, p));
+      this.ops += meshCost(placed);
       const cut = placed[0].op === 'cut';
       if (strict && !cut) {
         // cheap bounds first: the union can't grow by more than the new pieces' volume or past their bounds
@@ -218,10 +296,21 @@ class Build {
         if (before + made.reduce((v, m) => v + m.volume(), 0) < MIN_GROWTH * before) return false;
         if (!withinExtent([form, ...made])) return false;
       }
-      if (strict && (cut ? !this.cutFits(step.target, made[0]) : this.overlapsOthers(step.target, made))) return false;
+      if (strict && (cut ? !this.cutFits(step.target, made[0], placed[0]) : this.overlapsOthers(step.target, made, placed))) {
+        return false;
+      }
+      this.ops++;
       next = cut ? form.subtract(made[0]) : this.wasm.Manifold.union([form, ...made]);
       if (strict && ((!cut && next.volume() < MIN_GROWTH * form.volume()) || !withinExtent([next]))) return false;
+      this.ops++;
       if (!isSingleComponent(next)) return false;
+      // a round piece can touch along a tangent line, where the renderer's path (buildManifold) may disagree with
+      // the step-by-step union, so check that path now rather than only on the finished form
+      if (placed.some((p) => p.type !== 'cube')) {
+        // each piece is made again and unioned
+        this.ops += 2 * (meshCost(this.pieces) + meshCost(placed));
+        if (!rendersAsOne(this.wasm, [...this.pieces, ...placed])) return false;
+      }
       keep = true;
     } finally {
       if (!keep) {
@@ -238,22 +327,30 @@ class Build {
   }
 
   /** True when any of `made` overlaps a piece other than `target` by more than a touching face. */
-  private overlapsOthers(target: number, made: Manifold[]): boolean {
-    for (const m of made) {
+  private overlapsOthers(target: number, made: Manifold[], placed: Piece[]): boolean {
+    for (const [i, m] of made.entries()) {
       for (let j = 0; j < this.parts.length; j++) {
-        if (j === target || this.pieces[j].op !== 'add' || !boxesOverlap(m, this.parts[j])) continue;
-        if (sharedVolume(m, this.parts[j]) > OVERLAP_EPS) return true;
+        if (j === target || this.pieces[j].op !== 'add') continue;
+        const quick = quickOverlap(solidOf(placed[i], m), solidOf(this.pieces[j], this.parts[j]));
+        if (quick === null) this.ops += MESH_TEST_OPS;
+        if (quick === null ? sharedVolume(m, this.parts[j]) > OVERLAP_EPS : quick) return true;
       }
     }
     return false;
   }
 
-  /** Removes 10-50% of the target and carves no other piece. */
-  private cutFits(target: number, cutter: Manifold): boolean {
+  /** Carves no other piece and removes 10-50% of the target. */
+  private cutFits(target: number, cutter: Manifold, piece: Piece): boolean {
+    if (this.overlapsOthers(target, [cutter], [piece])) return false;
     const t = this.parts[target];
-    const removed = sharedVolume(t, cutter) / t.volume();
-    if (removed < MIN_CUT - EPS || removed > MAX_CUT + EPS) return false;
-    return !this.overlapsOthers(target, [cutter]);
+    const a = solidOf(this.pieces[target], t);
+    const b = solidOf(piece, cutter);
+    // a box notch in a box is exact from the bounds; anything round is measured on the mesh
+    const exact = a.kind === 'box' && b.kind === 'box';
+    if (!exact) this.ops += MESH_TEST_OPS;
+    const shared = exact ? boundsOverlap(a, b).reduce((v, d) => v * d, 1) : sharedVolume(t, cutter);
+    const removed = shared / t.volume();
+    return removed >= MIN_CUT - EPS && removed <= MAX_CUT + EPS;
   }
 
   /** Takes back the last committed step. */
@@ -397,18 +494,33 @@ function attempt(wasm: ManifoldToplevel, seed: number, settings: CleanSettings):
   }
 }
 
+/** The first attempt's base piece on its own. */
+function firstBase(wasm: ManifoldToplevel, seed: number, settings: CleanSettings): { pieces: Piece[]; recipe: RecipeStep[] } {
+  const build = new Build(wasm);
+  try {
+    const type = baseType(settings.allowed);
+    build.setBase(basePiece(type, baseSize(proportions(seed, 0), type, settings.level === 1 ? 0.5 : 1)));
+    return { pieces: build.pieces, recipe: build.recipe };
+  } finally {
+    build.delete();
+  }
+}
+
 /** Deterministic Clean form: the same seed and settings always give the same spec. Never throws on non-empty `allowed`. */
 export function generateCleanForm(wasm: ManifoldToplevel, seed: number, settings: CleanSettings): FormSpec {
   let best: Attempt | undefined;
   for (let n = 0; n < FORM_TRIES; n++) {
     const a = attempt(wasm, (seed + n) >>> 0, settings);
+    if (!rendersAsOne(wasm, a.pieces)) continue;
     if (!best || a.score > best.score) best = a;
     if (a.complete) {
       best = a;
       break;
     }
   }
-  return { version: 2, seed, style: 'clean', pieces: best!.pieces, recipe: best!.recipe, variation: 0 };
+  // no attempt built as one piece: its base alone always does
+  best ??= { ...firstBase(wasm, seed, settings), complete: false, score: 0 };
+  return { version: 2, seed, style: 'clean', pieces: best.pieces, recipe: best.recipe, variation: 0 };
 }
 
 /** A proportion stream for `variation` that counts its draws, so a build can resume where it left off. */
@@ -444,27 +556,47 @@ interface Search {
 
 /** The recipe built with proportions for `variation`. Up to VARIATION_BASES base pieces, since the base's
  *  proportions decide most of what fits; on each, depth first, each step with STEP_TRIES draws per visit, backing
- *  up to the step before when one can't be placed, until SEARCH_BUDGET draws are spent. */
-function search(wasm: ManifoldToplevel, recipe: RecipeStep[], seed: number, variation: number): Search {
+ *  up to the step before when one can't be placed, until SEARCH_BUDGET draws are spent. Every draw also spends
+ *  its cost from `total`. A finished form must also build as one piece along the renderer's path. */
+function search(
+  wasm: ManifoldToplevel,
+  recipe: RecipeStep[],
+  seed: number,
+  variation: number,
+  total: { left: number },
+): Search {
   const sizes = sizeStream(seed, variation);
   const steps = joinSteps(recipe);
   const type = recipe[0].type;
   let budget = 0;
+  let misses: number[] = [];
   let deepest: Search = { passed: false, pieces: [], prefix: 0, used: 0 };
   const descend = (build: Build, i: number): boolean => {
+    if (i === steps.length) {
+      total.left -= 2 * OP_COST * meshCost(build.pieces);
+      if (!rendersAsOne(wasm, build.pieces)) return false;
+    }
     if (i + 1 > deepest.prefix) deepest = { passed: false, pieces: [...build.pieces], prefix: i + 1, used: sizes.used() };
     if (i === steps.length) return true;
-    for (let t = 0; t < STEP_TRIES && budget > 0; t++) {
+    let t = 0;
+    for (; t < STEP_TRIES && budget > 0 && total.left > 0; t++) {
       budget--;
+      const ops = build.ops;
       const placed = place(steps[i], build.pieces, sizes.next);
-      if (!placed || !build.tryCommit(steps[i], placed, true)) continue;
+      const ok = !!placed && build.tryCommit(steps[i], placed, true);
+      total.left -= 1 + OP_COST * (build.ops - ops);
+      if (!ok) continue;
       if (descend(build, i + 1)) return true;
       build.undo();
     }
+    // a step that has used up all its draws BASE_MISSES times on this base is a sign the base doesn't suit it
+    if (t === STEP_TRIES && (misses[i] = (misses[i] ?? 0) + 1) >= BASE_MISSES) budget = 0;
     return false;
   };
-  for (let t = 0; t < VARIATION_BASES; t++) {
+  for (let t = 0; t < VARIATION_BASES && total.left > 0; t++) {
     budget = SEARCH_BUDGET;
+    misses = [];
+    total.left--;
     const build = new Build(wasm);
     try {
       build.setBase(basePiece(type, baseSize(sizes.next, type, recipe.length === 1 ? 0.5 : 1)));
@@ -515,17 +647,19 @@ function completeLeniently(
   }
 }
 
-/** The same recipe with the next variation number whose proportions pass the rules and differ from `spec`'s.
- *  If none passes, the best attempt: furthest strict prefix, then fewest broken steps, then lowest variation. */
+/** The same recipe with the next variation number whose proportions pass the rules and differ from `spec`'s,
+ *  within VARY_BUDGET draws. If none passes, the best attempt: furthest strict prefix, then fewest broken steps,
+ *  then lowest variation; `spec` itself if no attempt builds as one piece. */
 export function varyCleanForm(wasm: ManifoldToplevel, spec: FormSpec): FormSpec {
   const recipe = spec.recipe;
   if (spec.style !== 'clean' || !recipe?.length) return spec;
   const from = spec.variation ?? 0;
   const current = JSON.stringify(spec.pieces);
   const tried: { variation: number; found: Search }[] = [];
-  for (let i = 1; i <= VARIATION_TRIES; i++) {
+  const total = { left: VARY_BUDGET };
+  for (let i = 1; i <= VARIATION_TRIES && total.left > 0; i++) {
     const variation = from + i;
-    const found = search(wasm, recipe, spec.seed, variation);
+    const found = search(wasm, recipe, spec.seed, variation, total);
     if (found.passed && JSON.stringify(found.pieces) !== current) return { ...spec, pieces: found.pieces, recipe, variation };
     tried.push({ variation, found });
   }
@@ -534,11 +668,12 @@ export function varyCleanForm(wasm: ManifoldToplevel, spec: FormSpec): FormSpec 
   if (same) return { ...spec, pieces: same.found.pieces, recipe, variation: same.variation };
   const top = Math.max(...tried.map((t) => t.found.prefix));
   let best: { variation: number; pieces: Piece[]; violations: number } | undefined;
-  for (const t of tried.filter((c) => c.found.prefix === top)) {
+  for (const t of tried.filter((c) => c.found.prefix === top).slice(0, FALLBACK_CANDIDATES)) {
     const done = completeLeniently(wasm, recipe, t.found, spec.seed, t.variation);
+    if (!rendersAsOne(wasm, done.pieces)) continue;
     if (!best || done.violations < best.violations) best = { variation: t.variation, ...done };
   }
-  return { ...spec, pieces: best!.pieces, recipe, variation: best!.variation };
+  return best ? { ...spec, pieces: best.pieces, recipe, variation: best.variation } : spec;
 }
 
 /** What the level skips because of the user's join settings, e.g. "Level 5 (no cut: Clean cut is off)". */

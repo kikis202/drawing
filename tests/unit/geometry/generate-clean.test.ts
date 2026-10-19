@@ -208,6 +208,22 @@ describe('generateCleanForm', () => {
     }
   }, 120_000);
 
+  it('chained variations build as one piece along the renderer path and always move on', () => {
+    // Chests seed 43 once reached variations whose half-sunk cylinder touched its box along tangent lines: one
+    // piece step by step, two under buildManifold
+    let spec = generateCleanForm(wasm, 43, EXERCISE_SETTINGS[2]);
+    for (let i = 0; i < 40; i++) {
+      const next = varyCleanForm(wasm, spec);
+      expect(next.variation).toBeGreaterThan(spec.variation!);
+      const m = buildManifold(wasm, next.pieces);
+      const parts = m.decompose();
+      expect(parts.length, `variation ${next.variation}`).toBe(1);
+      parts.forEach((p) => p.delete());
+      m.delete();
+      spec = next;
+    }
+  }, 30_000);
+
   it('chests and lids has a hinged lid in at least 99% of seeds', () => {
     let lids = 0;
     for (let seed = 1; seed <= 300; seed++) {
