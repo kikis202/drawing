@@ -14,40 +14,11 @@ interface Props {
   settings: Settings;
   keptCount: number;
   onToggleShape: (type: PrimitiveType) => void;
-  onPieces: (n: number) => void;
-  onShotCount: (n: number) => void;
   onHidden: (on: boolean) => void;
   onSave: () => void;
 }
 
-interface StepperProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  fewer: string;
-  more: string;
-  onChange: (n: number) => void;
-}
-
-function Stepper({ label, value, min, max, fewer, more, onChange }: StepperProps) {
-  return (
-    <div class="control" role="group" aria-label={label}>
-      <span class="control-label">{label}</span>
-      <div class="stepper">
-        <button type="button" aria-label={fewer} disabled={value <= min} onClick={() => onChange(value - 1)}>
-          −
-        </button>
-        <output>{value}</output>
-        <button type="button" aria-label={more} disabled={value >= max} onClick={() => onChange(value + 1)}>
-          +
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export function Controls({ settings, keptCount, onToggleShape, onPieces, onShotCount, onHidden, onSave }: Props) {
+export function Controls({ settings, keptCount, onToggleShape, onHidden, onSave }: Props) {
   return (
     <div class="controls">
       <div class="control" role="group" aria-label="Shapes">
@@ -64,26 +35,6 @@ export function Controls({ settings, keptCount, onToggleShape, onPieces, onShotC
             </button>
           ))}
         </div>
-      </div>
-      <div class="control-row">
-        <Stepper
-          label="Pieces"
-          value={settings.pieces}
-          min={1}
-          max={6}
-          fewer="Fewer pieces"
-          more="More pieces"
-          onChange={onPieces}
-        />
-        <Stepper
-          label="Shots, evenly spaced"
-          value={settings.shotCount}
-          min={2}
-          max={36}
-          fewer="Fewer shots"
-          more="More shots"
-          onChange={onShotCount}
-        />
       </div>
       <label class="toggle">
         <input type="checkbox" checked={settings.render.hidden} onChange={(e) => onHidden(e.currentTarget.checked)} />

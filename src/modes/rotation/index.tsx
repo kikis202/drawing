@@ -15,9 +15,7 @@ import {
   captureView,
   keptShots,
   setLive,
-  setPieces,
   setRender,
-  setShotCount,
   toggleAllowed,
   toggleKeep,
 } from './state';
@@ -221,11 +219,6 @@ function RotationStudy({ store, onNoWebGL }: Props) {
           settings={s.settings}
           keptCount={keptShots(s).length}
           onToggleShape={(type) => store.dispatch(toggleAllowed, type)}
-          onPieces={(n) => store.dispatch(setPieces, n)}
-          onShotCount={(n) => {
-            cancelSnap();
-            store.dispatch(setShotCount, n);
-          }}
           onHidden={(on) => store.dispatch(setRender, { hidden: on })}
           onSave={() => {
             // Saving arrives in a later task.
