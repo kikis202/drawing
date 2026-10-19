@@ -33,8 +33,21 @@ Ideas agreed as "later", plus research-backed ideas not yet scheduled. The curre
 - **Facing cue:** tint faces that point toward the camera, or put a pole ring on spheres (pedagogy C10, A8).
 - **Axis gizmo,** off by default, because the evidence is mixed (pedagogy C11).
 
-## Known quality issues to revisit
+## Known quality issues and follow-ups (from the final review, 2026-10-20)
 
-These are tracked in the build ledger and flagged for the final review:
-- Some boolean seams in Freeform forms give short crease lines that stop mid-face, and diagonal shading streaks on flat faces.
-- The seed sweep's settings are correlated, so some hard combinations are never tested.
+- **Freeform seams:** booleans can leave short or dotted crease lines that stop mid-face, wavy junctions with no line, and diagonal shading streaks. Fix: decide creases and normals from manifold's per-triangle `faceID` and `runOriginalID` instead of an angle threshold. Clean forms are fine; they use 29°, ruling P30.
+- **Generation runs on the main thread.** Worst case is about 0.3 s on desktop, likely around 1 s on slow phones (ruling P17). Fix: move it to a Web Worker, or show a busy state.
+- **30° hinged lids almost never appear** in Chests and lids (9 of 148 open chests). Likely due to rule rejections; not investigated.
+- **Live view:** the full-screen live view on phones isn't modal (siblings not inert), and `viewport-fit=cover` is missing.
+- **Saved sets panel:**
+  - Records with a corrupt date can break the date display.
+  - Records without a valid date are invisible and can't be deleted.
+  - The status notice never clears.
+- **Tests:**
+  - The smoothing test doesn't check that FormScene itself follows `mesh.creaseDeg`.
+  - Inner image-load polls keep a 5 s timeout.
+  - There are a few other minor gaps.
+- **CI:**
+  - Least-privilege permissions per job, and `timeout-minutes`.
+  - README notes on the Node version and on running `npx playwright install chromium`.
+- **Accessibility:** tab order passes 3 stops per tile before the side panel; a skip link would help.
