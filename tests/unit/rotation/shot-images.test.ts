@@ -147,4 +147,47 @@ describe('ShotImages', () => {
     await images.blob(extra);
     expect(render).toHaveBeenCalledTimes(3);
   });
+
+  it('skips a shot whose render fails and keeps rendering the rest', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const shots = shotsOf(3);
+    const render = vi.fn(async (_f: FormScene, view: View, _h: boolean) => {
+      if (view === shots[1].view) throw new Error('boom');
+      return new Blob([`${view.turn}`]);
+    });
+    const { images, onChange } = setup({ render });
+    images.update({ mesh: mesh(), version: 1 }, shots, false);
+    for (let i = 0; i < 5; i++) await flush();
+    expect(render).toHaveBeenCalledTimes(3);
+    expect([...onChange.mock.calls.at(-1)![0].keys()]).toEqual(['g0', 'g2']);
+    expect(counter).toBe(2);
+    err.mockRestore();
+  });
+
+  it('rejects a pending blob() with superseded when the version changes', async () => {
+    const { source, pending } = manualSource();
+    const { images } = setup(source);
+    images.update({ mesh: mesh(), version: 1 }, [], false);
+    const p = images.blob({ id: 'c0', view: { turn: 5, tilt: 5 }, source: 'custom' });
+    const outcome = expect(p).rejects.toThrow('superseded');
+    await flush();
+    images.update({ mesh: mesh(), version: 2 }, [], false);
+    await outcome;
+    pending.splice(0).forEach((x) => x.resolve());
+    await flush();
+    expect(pending).toHaveLength(0);
+  });
+
+  it('rejects a pending blob() with superseded when hidden changes or on dispose', async () => {
+    const { source } = manualSource();
+    const { images } = setup(source);
+    images.update({ mesh: mesh(), version: 1 }, [], false);
+    const shot: Shot = { id: 'c0', view: { turn: 5, tilt: 5 }, source: 'custom' };
+    const a = expect(images.blob(shot)).rejects.toThrow('superseded');
+    images.update({ mesh: mesh(), version: 1 }, [], true);
+    await a;
+    const b = expect(images.blob(shot)).rejects.toThrow('superseded');
+    images.dispose();
+    await b;
+  });
 });

@@ -39,11 +39,19 @@ export class ShotImages {
   private readonly failed = new Set<string>();
   private lastEmitted = new Map<string, string>();
 
+  private readonly source: ShotSource;
+  private readonly makeScene: (m: FormMesh) => FormScene;
+  private readonly onChange: (urls: ReadonlyMap<string, string>) => void;
+
   constructor(
-    private readonly source: ShotSource,
-    private readonly makeScene: (m: FormMesh) => FormScene,
-    private readonly onChange: (urls: ReadonlyMap<string, string>) => void,
-  ) {}
+    source: ShotSource,
+    makeScene: (m: FormMesh) => FormScene,
+    onChange: (urls: ReadonlyMap<string, string>) => void,
+  ) {
+    this.source = source;
+    this.makeScene = makeScene;
+    this.onChange = onChange;
+  }
 
   update(form: { mesh: FormMesh; version: number }, shots: Shot[], hidden: boolean): void {
     if (form.version !== this.version) {
@@ -87,7 +95,6 @@ export class ShotImages {
     this.scene?.dispose();
     this.scene = null;
     this.shots = [];
-    for (const d of this.demands.splice(0)) d.reject(new Error('ShotImages disposed'));
   }
 
   private key(shot: Shot): string {
@@ -99,6 +106,7 @@ export class ShotImages {
     for (const entry of this.entries.values()) this.revoke(entry);
     this.entries.clear();
     this.failed.clear();
+    for (const d of this.demands.splice(0)) d.reject(new Error('superseded'));
   }
 
   private revoke(entry: Entry): void {
@@ -155,6 +163,7 @@ export class ShotImages {
           }
           this.failed.add(key);
           console.error('Shot render failed', e);
+          continue;
         }
         if (epoch !== this.epoch) continue;
         const listed = this.shots.some((s) => this.key(s) === key);
