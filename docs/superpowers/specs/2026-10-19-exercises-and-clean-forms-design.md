@@ -57,7 +57,7 @@ On desktop the panel is the right-hand column under the live view, top to bottom
 2. **Shots:**
    - A pattern picker: five buttons, each with a small icon and a name.
    - The chosen pattern's settings, as segmented controls, plus a one-line plain-language summary such as "8 shots, 45° apart, at eye level".
-   - An **Aids** row of toggle chips: Hidden lines, Box, Centre lines, Ground, Lines only.
+   - An **Aids** row of toggle chips: Hidden lines, Box, Centre lines, Ground, Lines only, Silhouette. Lines only and Silhouette can't both be on: turning one on turns the other off.
 3. **Customise** (collapsed by default):
    - Style (Clean or Freeform).
    - Level (1–6, with the level's name shown).
@@ -193,6 +193,7 @@ Every aid applies identically to the shots and to the live view. Changing an aid
 | Centre lines | Each piece's central axis as a thin non-photo-blue line, extended slightly beyond the piece. |
 | Ground | A light grid plane under the form's lowest point, plus the horizon line. The horizon is the vanishing line of horizontal planes, where the ground grid converges, computed from the same camera. It is drawn across the view when it falls inside the frame. With no camera roll it is always horizontal on screen. |
 | Lines only | Turns off shading. Faces are plain white and only the lines are drawn. Hidden-line removal still works. |
+| Silhouette | The form is drawn as a flat solid graphite shape with no interior lines or shading, which trains the outline. The Box, Centre lines and Ground aids still draw on top. Hidden lines don't apply. |
 
 ## Saving
 
@@ -215,7 +216,6 @@ These were shown as "Later" in the mockup:
 - rotation-prediction and matching quizzes
 - warm-up sessions and counted sets
 - timers
-- silhouette render mode
 - shareable seed links
 
 ## Left to the builder
