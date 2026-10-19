@@ -36,6 +36,14 @@ describe('pieceManifold', () => {
     expect(Math.abs(top[2])).toBeLessThan(0.01);
   });
 
+  it('cylinder stands along Y with round caps in the XZ plane', async () => {
+    const verts = await vertices('cylinder');
+    for (const [x, y, z] of verts) {
+      expect(Math.abs(y)).toBeCloseTo(0.4, 2);
+      expect((x / 0.6) ** 2 + (z / 0.3) ** 2).toBeCloseTo(1, 2);
+    }
+  });
+
   it('pyramid has a square base with sides aligned to X and Z', async () => {
     const base = (await vertices('pyramid')).sort((a, b) => a[1] - b[1]).slice(0, 4);
     for (const [x, y, z] of base) {
