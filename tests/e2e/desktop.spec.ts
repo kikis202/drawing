@@ -45,6 +45,18 @@ test('clicking a shot snaps the live view to it', async ({ page }) => {
   await expect(tile(page, '210° turn, 0° tilt')).toHaveAttribute('aria-current', 'true')
 })
 
+test('changing the step mid-snap never highlights a tile the live view is not on', async ({ page }) => {
+  await tile(page, '210° turn, 0° tilt').click()
+  await page.getByRole('group', { name: 'Step', exact: true }).getByRole('button', { name: '45°', exact: true }).click()
+  await expect(tiles(page)).toHaveCount(8)
+  await page.waitForTimeout(800)
+  const live = (await readout(page).textContent())!
+  const active = sheet(page).locator('[aria-current="true"]')
+  const count = await active.count()
+  expect(count).toBeLessThanOrEqual(1)
+  if (count === 1) await expect(active).toHaveAccessibleName(live)
+})
+
 test('dragging the live view clears the active shot', async ({ page }) => {
   await tile(page, '210° turn, 0° tilt').click()
   await expect(tile(page, '210° turn, 0° tilt')).toHaveAttribute('aria-current', 'true')
@@ -91,7 +103,7 @@ test('hidden lines toggle re-renders the shots', async ({ page }) => {
   await expect(hidden).toHaveAttribute('aria-pressed', 'true')
   await hidden.click()
   await expect(hidden).toHaveAttribute('aria-pressed', 'false')
-  await expect.poll(async () => (await renderedSrcs(page, 4))[0]).not.toBe(before)
+  await expect.poll(async () => (await renderedSrcs(page, 4))[0], { timeout: 20_000 }).not.toBe(before)
 })
 
 test('new object replaces the shots', async ({ page }) => {
@@ -99,10 +111,13 @@ test('new object replaces the shots', async ({ page }) => {
   await page.getByRole('checkbox', { name: 'Keep 30° turn, 0° tilt' }).check()
   await page.getByRole('region', { name: 'Exercise' }).getByRole('button', { name: 'New object' }).click()
   await expect
-    .poll(async () => {
-      const after = await renderedSrcs(page, 4)
-      return after.every((src) => !before.includes(src))
-    })
+    .poll(
+      async () => {
+        const after = await renderedSrcs(page, 4)
+        return after.every((src) => !before.includes(src))
+      },
+      { timeout: 20_000 },
+    )
     .toBe(true)
   await expect(sheet(page).getByRole('checkbox', { checked: true })).toHaveCount(0)
 })

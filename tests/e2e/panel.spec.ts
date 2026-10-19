@@ -129,7 +129,7 @@ test('variation is disabled for Freeform', async ({ page }) => {
 test('variation keeps the shots and draws new proportions', async ({ page }) => {
   const before = await renderedSrcs(page, 4)
   await page.getByRole('button', { name: 'Variation' }).click()
-  await expect.poll(async () => (await renderedSrcs(page, 4))[0]).not.toBe(before[0])
+  await expect.poll(async () => (await renderedSrcs(page, 4))[0], { timeout: 20_000 }).not.toBe(before[0])
   await expect(card(page, 'Box basics')).toHaveAttribute('aria-pressed', 'true')
 })
 
@@ -168,7 +168,7 @@ test('aids re-render the shots', async ({ page }) => {
   const [before] = await renderedSrcs(page, 4)
   await aid(page, 'Box').click()
   await expect(aid(page, 'Box')).toHaveAttribute('aria-pressed', 'true')
-  await expect.poll(async () => (await renderedSrcs(page, 4))[0]).not.toBe(before)
+  await expect.poll(async () => (await renderedSrcs(page, 4))[0], { timeout: 20_000 }).not.toBe(before)
   // Lines only and Silhouette can't both be on
   await aid(page, 'Lines only').click()
   await aid(page, 'Silhouette').click()

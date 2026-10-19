@@ -201,7 +201,12 @@ function RotationStudy({ store, onNoWebGL }: Props) {
     const from = store.state.value.live;
     const to = shot.view;
     // Land exactly on the shot's view; interpolation at t = 1 can be off by float error.
-    const land = () => store.dispatch(setLive, { ...to }, shot.id);
+    // A plan change reuses shot ids for other views, so only keep the id if it still has this view.
+    const land = () => {
+      const now = allShots(store.state.value).find((x) => x.id === shot.id);
+      const same = now !== undefined && now.view.turn === to.turn && now.view.tilt === to.tilt;
+      store.dispatch(setLive, { ...to }, same ? shot.id : null);
+    };
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       land();
       return;
@@ -340,8 +345,12 @@ function RotationStudy({ store, onNoWebGL }: Props) {
       <ShotsPanel
         plan={settings.plan}
         render={settings.render}
-        onPlan={(patch) => store.dispatch(setPlan, patch, Math.random())}
+        onPlan={(patch) => {
+          cancelSnap();
+          store.dispatch(setPlan, patch, Math.random());
+        }}
         onStartFromLive={() => {
+          cancelSnap();
           if (!startIsLive) store.dispatch(startFromLive, Math.random());
         }}
         onRender={(patch) => store.dispatch(setRender, patch)}
@@ -353,8 +362,14 @@ function RotationStudy({ store, onNoWebGL }: Props) {
         onToggleShape={(type) => store.dispatch(toggleAllowed, type)}
         onToggleJoin={(join) => store.dispatch(toggleJoin, join)}
         onLens={(lens) => store.dispatch(setRender, { lens })}
-        onTopMap={(on) => store.dispatch(setPlan, { topMap: on }, Math.random())}
-        onHideOne={(on) => store.dispatch(setHideOne, on, Math.random())}
+        onTopMap={(on) => {
+          cancelSnap();
+          store.dispatch(setPlan, { topMap: on }, Math.random());
+        }}
+        onHideOne={(on) => {
+          cancelSnap();
+          store.dispatch(setHideOne, on, Math.random());
+        }}
       />
     </>
   );
