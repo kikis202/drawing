@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { View } from '../views/types';
 import type { FormScene } from './form-scene';
+import type { RenderOptions } from './render-options';
 
 /** Renders reference shots: square PNGs on white, via one offscreen WebGL canvas. */
 export class ShotRenderer {
@@ -23,8 +24,8 @@ export class ShotRenderer {
     this.renderer.setClearColor('#FFFFFF', 1);
   }
 
-  render(form: FormScene, view: View, hidden: boolean): Promise<Blob> {
-    form.setView(view, 1, this.sizePx, hidden);
+  render(form: FormScene, view: View, opts: RenderOptions): Promise<Blob> {
+    form.setView(view, 1, this.sizePx, opts);
     form.setResolution(this.sizePx, this.sizePx);
     this.renderer.render(form.scene, form.camera);
     return new Promise((resolve, reject) => {

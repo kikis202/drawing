@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cameraPosition, DISTANCE, fovForAspect } from '../../../src/views/camera';
+import { cameraPosition, DISTANCE, FOV_DEG, fovForAspect, LENS_FOV, lensDistance } from '../../../src/views/camera';
 import { viewLabel, viewSlug } from '../../../src/views/label';
 import {
   applyDrag,
@@ -50,6 +50,25 @@ describe('camera', () => {
       expect(p.every(Number.isFinite)).toBe(true);
       expect(Math.hypot(...p)).toBeCloseTo(DISTANCE, 6);
     }
+  });
+  it('framing is identical for every lens and aspect', () => {
+    for (const lens of ['flat', 'normal', 'wide'] as const)
+      for (const aspect of [0.4, 0.75, 1, 1.6, 3]) {
+        const half = (fovForAspect(aspect, lens) / 2) * Math.PI / 180;
+        expect(lensDistance(lens) * Math.tan(half) * Math.min(1, aspect)).toBeCloseTo(
+          1.15 / Math.cos((LENS_FOV[lens] * Math.PI) / 360),
+          6,
+        );
+      }
+  });
+  it('cameraPosition sits at the lens distance', () => {
+    for (const lens of ['flat', 'normal', 'wide'] as const)
+      expect(Math.hypot(...cameraPosition({ turn: 70, tilt: 25 }, lens))).toBeCloseTo(lensDistance(lens), 6);
+  });
+  it('normal lens keeps the old constants', () => {
+    expect(lensDistance('normal')).toBe(DISTANCE);
+    expect(fovForAspect(1)).toBe(FOV_DEG);
+    expect(LENS_FOV).toEqual({ flat: 15, normal: 32, wide: 55 });
   });
   it('front view sits on +z', () => {
     const p = cameraPosition({ turn: 0, tilt: 0 });

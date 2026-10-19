@@ -5,13 +5,14 @@ import {
   initialState,
   keptShots,
   setForm,
-  setHidden,
+  setRender,
   setLive,
   setPieces,
   setShotCount,
   toggleAllowed,
   toggleKeep,
 } from '../../../src/modes/rotation/state';
+import { DEFAULT_RENDER } from '../../../src/render/render-options';
 import { ringViews } from '../../../src/views/spacing';
 import type { FormMesh, FormSpec } from '../../../src/geometry/types';
 
@@ -28,7 +29,7 @@ describe('rotation state', () => {
       allowed: ['cube', 'sphere', 'cylinder', 'cone', 'pyramid'],
       pieces: 3,
       shotCount: 8,
-      hidden: false,
+      render: DEFAULT_RENDER,
     });
     expect(initialState.live).toEqual({ turn: 30, tilt: 20 });
     expect(initialState.form).toBeNull();
@@ -89,10 +90,11 @@ describe('rotation state', () => {
     expect(toggleAllowed(s, 'cone').settings.allowed).toEqual(['cube', 'cone']);
   });
 
-  it('clamps pieces to 1..6 and sets hidden', () => {
+  it('clamps pieces to 1..6 and patches render options', () => {
     expect(setPieces(initialState, 0).settings.pieces).toBe(1);
     expect(setPieces(initialState, 9).settings.pieces).toBe(6);
-    expect(setHidden(initialState, true).settings.hidden).toBe(true);
+    expect(setRender(initialState, { hidden: true }).settings.render).toEqual({ ...DEFAULT_RENDER, hidden: true });
+    expect(setRender(initialState, { lens: 'wide' }).settings.render.lens).toBe('wide');
   });
 
   it('captureView adds a kept, active custom shot at the live view', () => {

@@ -2,20 +2,21 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { loadManifold } from '../../geometry/manifold';
 import { FormScene } from '../../render/form-scene';
 import { ShotRenderer } from '../../render/shot-renderer';
+import type { RenderOptions } from '../../render/render-options';
 import { applyDrag, applyKey, easeInOut, interpolateView } from '../../views/pose';
-import type { Shot, View } from '../../views/types';
+import type { Shot } from '../../views/types';
 import { ContactSheet } from './components/ContactSheet';
 import { Controls } from './components/Controls';
 import { LiveView } from './components/LiveView';
 import { TopBar } from './components/TopBar';
-import { ShotImages } from './shot-images';
+import { ShotImages, shotKey } from './shot-images';
 import {
   allShots,
   captureView,
   keptShots,
-  setHidden,
   setLive,
   setPieces,
+  setRender,
   setShotCount,
   toggleAllowed,
   toggleKeep,
@@ -80,8 +81,7 @@ export default function RotationMode() {
 }
 
 /** What a shot image shows; an image is only used for a tile whose tag still matches. */
-const imageTag = (version: number, hidden: boolean, view: View) =>
-  `${version}|${hidden}|${view.turn}|${view.tilt}`;
+const imageTag = shotKey;
 
 interface Props {
   store: Store;
@@ -92,7 +92,7 @@ function RotationStudy({ store, onNoWebGL }: Props) {
   const s = store.state.value;
   const [images, setImages] = useState<ReadonlyMap<string, { url: string; tag: string }>>(new Map());
   const shotImages = useRef<ShotImages | null>(null);
-  const requested = useRef<{ version: number; hidden: boolean; shots: Shot[] } | null>(null);
+  const requested = useRef<{ version: number; render: RenderOptions; shots: Shot[] } | null>(null);
   const snapFrame = useRef(0);
 
   useLayoutEffect(() => {
@@ -111,7 +111,7 @@ function RotationStudy({ store, onNoWebGL }: Props) {
       const next = new Map<string, { url: string; tag: string }>();
       for (const shot of req.shots) {
         const url = urls.get(shot.id);
-        if (url) next.set(shot.id, { url, tag: imageTag(req.version, req.hidden, shot.view) });
+        if (url) next.set(shot.id, { url, tag: imageTag(req.version, req.render, shot.view) });
       }
       setImages(next);
     });
@@ -129,16 +129,16 @@ function RotationStudy({ store, onNoWebGL }: Props) {
   useLayoutEffect(() => {
     if (!s.form) return;
     const shots = allShots(s);
-    requested.current = { version: s.form.version, hidden: s.settings.hidden, shots };
-    shotImages.current?.update(s.form, shots, s.settings.hidden);
-  }, [s.form, s.generated, s.custom, s.settings.hidden]);
+    requested.current = { version: s.form.version, render: s.settings.render, shots };
+    shotImages.current?.update(s.form, shots, s.settings.render);
+  }, [s.form, s.generated, s.custom, s.settings.render]);
 
   // Never hand a tile an image made for another view, form or hidden-lines setting,
   // even for the one render before the queue has caught up.
   const urls = new Map<string, string>();
   for (const shot of allShots(s)) {
     const image = images.get(shot.id);
-    if (image && s.form && image.tag === imageTag(s.form.version, s.settings.hidden, shot.view)) {
+    if (image && s.form && image.tag === imageTag(s.form.version, s.settings.render, shot.view)) {
       urls.set(shot.id, image.url);
     }
   }
@@ -207,7 +207,7 @@ function RotationStudy({ store, onNoWebGL }: Props) {
         <LiveView
           form={s.form}
           view={s.live}
-          hidden={s.settings.hidden}
+          render={s.settings.render}
           onDrag={onDrag}
           onDragStart={cancelSnap}
           onWebGLError={onNoWebGL}
@@ -226,7 +226,7 @@ function RotationStudy({ store, onNoWebGL }: Props) {
             cancelSnap();
             store.dispatch(setShotCount, n);
           }}
-          onHidden={(on) => store.dispatch(setHidden, on)}
+          onHidden={(on) => store.dispatch(setRender, { hidden: on })}
           onSave={() => {
             // Saving arrives in a later task.
           }}

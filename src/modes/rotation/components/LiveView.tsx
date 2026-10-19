@@ -2,13 +2,14 @@ import { useEffect, useRef } from 'preact/hooks';
 import * as THREE from 'three';
 import type { FormMesh } from '../../../geometry/types';
 import { FormScene } from '../../../render/form-scene';
+import type { RenderOptions } from '../../../render/render-options';
 import { viewLabel } from '../../../views/label';
 import type { View } from '../../../views/types';
 
 interface Props {
   form: { mesh: FormMesh; version: number };
   view: View;
-  hidden: boolean;
+  render: RenderOptions;
   onDrag: (dxPx: number, dyPx: number) => void;
   onKey: (key: string, shift: boolean) => boolean;
   onDragStart: () => void;
@@ -18,14 +19,14 @@ interface Props {
 }
 
 /** The rotatable view on studio grey. Owns its own renderer and scene. */
-export function LiveView({ form, view, hidden, onDrag, onKey, onDragStart, onCapture, onWebGLError }: Props) {
+export function LiveView({ form, view, render, onDrag, onKey, onDragStart, onCapture, onWebGLError }: Props) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderer = useRef<THREE.WebGLRenderer | null>(null);
   const scene = useRef<FormScene | null>(null);
   const size = useRef({ w: 0, h: 0 });
-  const latest = useRef({ view, hidden });
-  latest.current = { view, hidden };
+  const latest = useRef({ view, render });
+  latest.current = { view, render };
   const frame = useRef(0);
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
 
@@ -38,7 +39,7 @@ export function LiveView({ form, view, hidden, onDrag, onKey, onDragStart, onCap
       const s = scene.current;
       const { w, h } = size.current;
       if (!r || !s || w === 0 || h === 0) return;
-      s.setView(latest.current.view, w / h, Math.min(w, h), latest.current.hidden);
+      s.setView(latest.current.view, w / h, Math.min(w, h), latest.current.render);
       r.render(s.scene, s.camera);
     });
   }).current;
@@ -92,7 +93,7 @@ export function LiveView({ form, view, hidden, onDrag, onKey, onDragStart, onCap
     };
   }, [form.version]);
 
-  useEffect(schedule, [view, hidden]);
+  useEffect(schedule, [view, render]);
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return;

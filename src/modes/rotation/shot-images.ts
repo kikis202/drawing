@@ -1,9 +1,11 @@
 import type { FormScene } from '../../render/form-scene';
 import type { FormMesh } from '../../geometry/types';
+import { DEFAULT_RENDER, renderKey } from '../../render/render-options';
+import type { RenderOptions } from '../../render/render-options';
 import type { Shot, View } from '../../views/types';
 
 export interface ShotSource {
-  render(form: FormScene, view: View, hidden: boolean): Promise<Blob>;
+  render(form: FormScene, view: View, opts: RenderOptions): Promise<Blob>;
 }
 
 interface Entry {
@@ -17,17 +19,19 @@ interface Demand {
   reject: (e: unknown) => void;
 }
 
-const keyOf = (version: number, hidden: boolean, v: View) =>
-  `${version}|${hidden}|${v.turn}|${v.tilt}`;
+/** The cache key; index.tsx tags the images it hands to tiles with the same string. */
+export const shotKey = (version: number, opts: RenderOptions, v: View) =>
+  `${version}|${renderKey(opts)}|${v.turn}|${v.tilt}`;
 
 /**
  * Turns shots into PNG object URLs, one render at a time. Results are cached per form
- * version, hidden-lines setting and view; anything from an older version or setting is
+ * version, render options and view; anything from an older version or setting is
  * discarded, so a stale image is never reported.
  */
 export class ShotImages {
   private version = -1;
-  private hidden = false;
+  private opts: RenderOptions = DEFAULT_RENDER;
+  private optsKey = renderKey(DEFAULT_RENDER);
   private scene: FormScene | null = null;
   private shots: Shot[] = [];
   private readonly entries = new Map<string, Entry>();
@@ -53,15 +57,17 @@ export class ShotImages {
     this.onChange = onChange;
   }
 
-  update(form: { mesh: FormMesh; version: number }, shots: Shot[], hidden: boolean): void {
+  update(form: { mesh: FormMesh; version: number }, shots: Shot[], opts: RenderOptions): void {
     if (form.version !== this.version) {
       this.scene?.dispose();
       this.scene = this.makeScene(form.mesh);
       this.version = form.version;
       this.invalidate();
     }
-    if (hidden !== this.hidden) {
-      this.hidden = hidden;
+    const optsKey = renderKey(opts);
+    if (optsKey !== this.optsKey) {
+      this.opts = opts;
+      this.optsKey = optsKey;
       this.invalidate();
     }
     this.shots = shots;
@@ -79,7 +85,7 @@ export class ShotImages {
     void this.pump();
   }
 
-  /** The cached render for the current form and hidden setting; rendered on demand if missing. */
+  /** The cached render for the current form and render options; rendered on demand if missing. */
   blob(shot: Shot): Promise<Blob> {
     const cached = this.entries.get(this.key(shot));
     if (cached) return Promise.resolve(cached.blob);
@@ -98,7 +104,7 @@ export class ShotImages {
   }
 
   private key(shot: Shot): string {
-    return keyOf(this.version, this.hidden, shot.view);
+    return shotKey(this.version, this.opts, shot.view);
   }
 
   private invalidate(): void {
@@ -148,12 +154,12 @@ export class ShotImages {
     try {
       this.settleDemands();
       for (let job = this.next(); job; job = this.next()) {
-        const { epoch, scene, hidden } = this;
+        const { epoch, scene, opts } = this;
         if (!scene) break;
         const key = this.key(job.shot);
         let blob: Blob;
         try {
-          blob = await this.source.render(scene, job.shot.view, hidden);
+          blob = await this.source.render(scene, job.shot.view, opts);
         } catch (e) {
           if (epoch !== this.epoch) continue;
           if (job.demand) {

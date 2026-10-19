@@ -6,6 +6,7 @@ import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { FormMesh } from '../geometry/types';
 import type { View } from '../views/types';
 import { cameraPosition, fovForAspect } from '../views/camera';
+import type { RenderOptions } from './render-options';
 import { buildEdgeAdjacency, creaseSegments, silhouetteSegments } from './edges';
 import type { EdgeAdjacency } from './edges';
 
@@ -82,14 +83,14 @@ export class FormScene {
     this.scene.add(this.camera);
   }
 
-  setView(view: View, aspect: number, framePx: number, hidden: boolean): void {
+  setView(view: View, aspect: number, framePx: number, opts: RenderOptions): void {
     const a = aspect > 0 ? aspect : 1;
-    const pos = cameraPosition(view);
+    const pos = cameraPosition(view, opts.lens);
     const { camera } = this;
     camera.position.set(...pos);
     camera.up.set(0, 1, 0);
     camera.lookAt(0, 0, 0);
-    camera.fov = fovForAspect(a);
+    camera.fov = fovForAspect(a, opts.lens);
     camera.aspect = a;
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
@@ -104,7 +105,7 @@ export class FormScene {
     const w = Math.min(3, Math.max(1.25, framePx / 300));
     this.visibleMaterial.linewidth = w;
     this.hiddenMaterial.linewidth = 0.75 * w;
-    this.hiddenLines.visible = hidden;
+    this.hiddenLines.visible = opts.hidden;
   }
 
   setResolution(widthPx: number, heightPx: number): void {

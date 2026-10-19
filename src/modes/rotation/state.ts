@@ -1,5 +1,7 @@
 import { PRIMITIVES } from '../../geometry/types';
 import type { FormMesh, FormSpec, PrimitiveType } from '../../geometry/types';
+import { DEFAULT_RENDER } from '../../render/render-options';
+import type { RenderOptions } from '../../render/render-options';
 import { ringViews } from '../../views/spacing';
 import type { Shot, View } from '../../views/types';
 
@@ -7,7 +9,7 @@ export interface Settings {
   allowed: PrimitiveType[];
   pieces: number;
   shotCount: number;
-  hidden: boolean;
+  render: RenderOptions;
 }
 
 export interface RotationState {
@@ -23,7 +25,7 @@ export interface RotationState {
 }
 
 export const initialState: RotationState = {
-  settings: { allowed: [...PRIMITIVES], pieces: 3, shotCount: 8, hidden: false },
+  settings: { allowed: [...PRIMITIVES], pieces: 3, shotCount: 8, render: DEFAULT_RENDER },
   form: null,
   generated: [],
   custom: [],
@@ -113,8 +115,8 @@ export function setPieces(s: RotationState, n: number): RotationState {
   return { ...s, settings: { ...s.settings, pieces: clamp(n, 1, 6) } };
 }
 
-export function setHidden(s: RotationState, on: boolean): RotationState {
-  return { ...s, settings: { ...s.settings, hidden: on } };
+export function setRender(s: RotationState, patch: Partial<RenderOptions>): RotationState {
+  return { ...s, settings: { ...s.settings, render: { ...s.settings.render, ...patch } } };
 }
 
 export function setLive(s: RotationState, view: View, activeShotId: string | null): RotationState {

@@ -86,7 +86,7 @@ export function Controls({ settings, keptCount, onToggleShape, onPieces, onShotC
         />
       </div>
       <label class="toggle">
-        <input type="checkbox" checked={settings.hidden} onChange={(e) => onHidden(e.currentTarget.checked)} />
+        <input type="checkbox" checked={settings.render.hidden} onChange={(e) => onHidden(e.currentTarget.checked)} />
         Hidden lines
         <span class="toggle-dash" aria-hidden="true" />
       </label>
