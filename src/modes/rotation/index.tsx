@@ -3,20 +3,30 @@ import { loadManifold } from '../../geometry/manifold';
 import { FormScene } from '../../render/form-scene';
 import { ShotRenderer } from '../../render/shot-renderer';
 import type { RenderOptions } from '../../render/render-options';
+import { planColumns } from '../../views/patterns';
 import { applyDrag, applyKey, easeInOut, interpolateView } from '../../views/pose';
 import type { Shot } from '../../views/types';
 import { ContactSheet } from './components/ContactSheet';
-import { Controls } from './components/Controls';
+import { CustomisePanel } from './components/CustomisePanel';
+import { ExercisePanel } from './components/ExercisePanel';
 import { LiveView } from './components/LiveView';
+import { ShotsPanel } from './components/ShotsPanel';
 import { TopBar } from './components/TopBar';
 import { ShotImages, shotKey } from './shot-images';
 import {
   allShots,
   captureView,
   keptShots,
+  reveal,
+  setHideOne,
+  setLevel,
   setLive,
+  setPlan,
   setRender,
+  setStyle,
+  startFromLive,
   toggleAllowed,
+  toggleJoin,
   toggleKeep,
 } from './state';
 import { createRotationStore } from './store';
@@ -183,23 +193,31 @@ function RotationStudy({ store, onNoWebGL }: Props) {
     return true;
   };
 
-  const newObject = () => {
+  /** Generating replaces the shots, so a snap in flight would land on a shot that's gone. */
+  const regenerate = (make: () => void) => {
     cancelSnap();
-    store.newObject();
+    make();
   };
 
   if (!s.form) return null;
+  const { settings } = s;
+  const { start } = settings.plan.sequence;
+  const startIsLive = start.turn === s.live.turn && start.tilt === s.live.tilt;
+  const keptCount = keptShots(s).length;
 
   return (
     <div class="rotation">
-      <TopBar onNewObject={newObject} />
+      <TopBar />
       <ContactSheet
         shots={allShots(s)}
         urls={urls}
         kept={s.kept}
         activeShotId={s.activeShotId}
+        hiddenShotId={s.revealed ? null : s.hiddenShotId}
+        columns={planColumns(settings.plan)}
         onSnap={snap}
         onToggleKeep={(id) => store.dispatch(toggleKeep, id)}
+        onReveal={() => store.dispatch(reveal)}
       />
       <aside class="rotation-side">
         <LiveView
@@ -215,15 +233,46 @@ function RotationStudy({ store, onNoWebGL }: Props) {
             store.dispatch(captureView);
           }}
         />
-        <Controls
-          settings={s.settings}
-          keptCount={keptShots(s).length}
-          onToggleShape={(type) => store.dispatch(toggleAllowed, type)}
-          onHidden={(on) => store.dispatch(setRender, { hidden: on })}
-          onSave={() => {
-            // Saving arrives in a later task.
-          }}
-        />
+        <div class="panel">
+          <ExercisePanel
+            selected={settings.exercise}
+            canVary={s.form.spec.style === 'clean'}
+            onApply={(id) => regenerate(() => store.applyExercise(id))}
+            onVariation={() => regenerate(store.variation)}
+            onNewObject={() => regenerate(store.newObject)}
+          />
+          <ShotsPanel
+            plan={settings.plan}
+            render={settings.render}
+            onPlan={(patch) => store.dispatch(setPlan, patch, Math.random())}
+            onStartFromLive={() => {
+              if (!startIsLive) store.dispatch(startFromLive, Math.random());
+            }}
+            onRender={(patch) => store.dispatch(setRender, patch)}
+          />
+          <CustomisePanel
+            settings={settings}
+            onStyle={(style) => store.dispatch(setStyle, style)}
+            onLevel={(level) => store.dispatch(setLevel, level)}
+            onToggleShape={(type) => store.dispatch(toggleAllowed, type)}
+            onToggleJoin={(join) => store.dispatch(toggleJoin, join)}
+            onLens={(lens) => store.dispatch(setRender, { lens })}
+            onTopMap={(on) => store.dispatch(setPlan, { topMap: on }, Math.random())}
+            onHideOne={(on) => store.dispatch(setHideOne, on, Math.random())}
+          />
+        </div>
+        <div class="panel-save">
+          <button
+            type="button"
+            class="btn btn-primary save"
+            disabled={keptCount === 0}
+            onClick={() => {
+              // Saving arrives in a later task.
+            }}
+          >
+            {keptCount === 1 ? 'Save 1 shot' : `Save ${keptCount} shots`}
+          </button>
+        </div>
       </aside>
     </div>
   );

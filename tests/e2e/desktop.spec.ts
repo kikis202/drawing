@@ -84,27 +84,20 @@ test('capture view adds a kept "custom" shot', async ({ page }) => {
   await expect(fifth.getByRole('button')).toHaveAccessibleName((await readout(page).textContent())!)
 })
 
-test.fixme('changing the shot count keeps ticked shots (stepper removed; rewritten in Task 8)', async ({ page }) => {
-  await page.getByRole('checkbox', { name: 'Keep 120° turn, 0° tilt' }).check()
-  const more = page.getByRole('button', { name: 'More shots' })
-  for (let i = 0; i < 4; i++) await more.click()
-  await expect(page.getByRole('status').filter({ hasText: /^12$/ })).toBeVisible()
-  await expect(tiles(page)).toHaveCount(13)
-  await expect(sheet(page).getByRole('checkbox', { checked: true })).toHaveCount(1)
-  await expect(page.getByRole('checkbox', { name: 'Keep 120° turn, 0° tilt' })).toBeChecked()
-})
-
 test('hidden lines toggle re-renders the shots', async ({ page }) => {
   const [before] = await renderedSrcs(page, 4)
   // Box basics starts with hidden lines on
-  await page.getByRole('checkbox', { name: 'Hidden lines' }).uncheck()
+  const hidden = page.getByRole('group', { name: 'Aids' }).getByRole('button', { name: 'Hidden lines' })
+  await expect(hidden).toHaveAttribute('aria-pressed', 'true')
+  await hidden.click()
+  await expect(hidden).toHaveAttribute('aria-pressed', 'false')
   await expect.poll(async () => (await renderedSrcs(page, 4))[0]).not.toBe(before)
 })
 
 test('new object replaces the shots', async ({ page }) => {
   const before = await renderedSrcs(page, 4)
   await page.getByRole('checkbox', { name: 'Keep 30° turn, 0° tilt' }).check()
-  await page.getByRole('banner').getByRole('button', { name: 'New object' }).click()
+  await page.getByRole('region', { name: 'Exercise' }).getByRole('button', { name: 'New object' }).click()
   await expect
     .poll(async () => {
       const after = await renderedSrcs(page, 4)
@@ -131,8 +124,8 @@ test('the sheet fills the main area with large tiles', async ({ page }) => {
   expect(last.y + last.height).toBeLessThanOrEqual(box.y + box.height)
 })
 
-test.fixme('a tile never shows an image that belonged to another view (drives the removed stepper; rewritten in Task 8)', async ({ page }) => {
-  await renderedSrcs(page, 8)
+test('a tile never shows an image that belonged to another view', async ({ page }) => {
+  await renderedSrcs(page, 4)
   await sheet(page).evaluate((list) => {
     const seen = new Map<string, string>()
     const conflicts: string[] = []
@@ -155,13 +148,14 @@ test.fixme('a tile never shows an image that belonged to another view (drives th
     })
     ;(window as unknown as { staleConflicts: string[] }).staleConflicts = conflicts
   })
-  const more = page.getByRole('button', { name: 'More shots' })
-  await more.click()
-  await renderedSrcs(page, 9)
-  await more.click()
-  await renderedSrcs(page, 10)
-  await page.getByRole('button', { name: 'Fewer shots' }).click()
-  await renderedSrcs(page, 9)
+  const step = (name: string) =>
+    page.getByRole('group', { name: 'Step', exact: true }).getByRole('button', { name, exact: true })
+  await step('45°').click()
+  await renderedSrcs(page, 8)
+  await step('30°').click()
+  await renderedSrcs(page, 12)
+  await step('90°').click()
+  await renderedSrcs(page, 4)
   const conflicts = await page.evaluate(() => (window as unknown as { staleConflicts: string[] }).staleConflicts)
   expect(conflicts).toEqual([])
 })

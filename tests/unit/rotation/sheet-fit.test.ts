@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitSheet } from '../../../src/modes/rotation/sheet-fit';
+import { fitColumns, fitSheet } from '../../../src/modes/rotation/sheet-fit';
 
 describe('fitSheet', () => {
   it('lays 8 shots out in 4 columns in a desktop-sized area', () => {
@@ -32,5 +32,28 @@ describe('fitSheet', () => {
       expect(Number.isInteger(tile)).toBe(true);
       expect(cols * tile + (cols - 1) * 14).toBeLessThanOrEqual(1001);
     }
+  });
+});
+
+describe('fitColumns', () => {
+  it('keeps the forced column count and fits every row when tiles stay large', () => {
+    const fit = fitColumns(2, 4, 1140, 845, 14);
+    expect(fit.cols).toBe(4);
+    expect(4 * fit.tile + 3 * 14).toBeLessThanOrEqual(1140);
+    expect(2 * fit.tile + 14).toBeLessThanOrEqual(845);
+  });
+
+  it('scrolls rather than shrinking tiles under the minimum to fit the height', () => {
+    const fit = fitColumns(5, 4, 1140, 400, 14);
+    expect(fit.cols).toBe(4);
+    expect(fit.tile).toBe(180);
+  });
+
+  it('never goes wider than the area, even below the minimum', () => {
+    const fit = fitColumns(5, 8, 1080, 810, 14);
+    expect(fit.cols).toBe(8);
+    expect(Number.isInteger(fit.tile)).toBe(true);
+    expect(8 * fit.tile + 7 * 14).toBeLessThanOrEqual(1080);
+    expect(fit.tile).toBeGreaterThan(100);
   });
 });

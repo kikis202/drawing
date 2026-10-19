@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Shot } from '../../../views/types';
-import { fitSheet } from '../sheet-fit';
+import { fitColumns, fitSheet } from '../sheet-fit';
 import { ShotTile } from './ShotTile';
 
 const GAP = 14;
@@ -10,12 +10,30 @@ interface Props {
   urls: ReadonlyMap<string, string>;
   kept: string[];
   activeShotId: string | null;
+  /** The covered shot, if any. */
+  hiddenShotId: string | null;
+  /** Forces the column count (Grid); null lets the sheet pick. */
+  columns?: number | null;
   onSnap: (shot: Shot) => void;
   onToggleKeep: (id: string) => void;
+  onReveal: () => void;
 }
 
-/** Sizes the tiles so the shots fill the area as large as they can, scrolling only past the minimum size. */
-export function ContactSheet({ shots, urls, kept, activeShotId, onSnap, onToggleKeep }: Props) {
+/**
+ * Sizes the tiles so the shots fill the area as large as they can, scrolling only past the minimum size.
+ * With `columns` set, a leading map shot takes a row of its own so the rows after it line up.
+ */
+export function ContactSheet({
+  shots,
+  urls,
+  kept,
+  activeShotId,
+  hiddenShotId,
+  columns = null,
+  onSnap,
+  onToggleKeep,
+  onReveal,
+}: Props) {
   const ref = useRef<HTMLUListElement>(null);
   const [area, setArea] = useState<{ w: number; h: number } | null>(null);
 
@@ -29,7 +47,14 @@ export function ContactSheet({ shots, urls, kept, activeShotId, onSnap, onToggle
     return () => observer.disconnect();
   }, []);
 
-  const fit = area && area.w > 0 ? fitSheet(shots.length, area.w, area.h, GAP) : null;
+  const ownRow = columns !== null && shots[0]?.role === 'map' ? 1 : 0;
+  const rows = columns !== null ? ownRow + Math.ceil((shots.length - ownRow) / columns) : 0;
+  const fit =
+    area && area.w > 0
+      ? columns !== null
+        ? fitColumns(rows, columns, area.w, area.h, GAP)
+        : fitSheet(shots.length, area.w, area.h, GAP)
+      : null;
 
   return (
     <ul
@@ -41,15 +66,18 @@ export function ContactSheet({ shots, urls, kept, activeShotId, onSnap, onToggle
         gridTemplateColumns: fit ? `repeat(${fit.cols}, ${fit.tile}px)` : undefined,
       }}
     >
-      {shots.map((shot) => (
+      {shots.map((shot, i) => (
         <ShotTile
           key={shot.id}
           shot={shot}
           url={urls.get(shot.id)}
           kept={kept.includes(shot.id)}
           active={shot.id === activeShotId}
+          hidden={shot.id === hiddenShotId}
+          style={ownRow && i === 1 ? { gridColumnStart: 1 } : undefined}
           onSnap={onSnap}
           onToggleKeep={onToggleKeep}
+          onReveal={onReveal}
         />
       ))}
     </ul>

@@ -1,7 +1,9 @@
+import { effect } from '@preact/signals';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRotationStore } from '../../../src/modes/rotation/store';
 import { applyExercise, initialState, setHideOne, setLevel, setStyle, toggleKeep } from '../../../src/modes/rotation/state';
 import { saveSettings, SETTINGS_KEY } from '../../../src/modes/rotation/settings-storage';
+import type { RotationState } from '../../../src/modes/rotation/state';
 import type { ManifoldToplevel } from '../../../src/geometry/manifold';
 import type { FormSpec } from '../../../src/geometry/types';
 import { getTestManifold } from '../../helpers/manifold';
@@ -61,6 +63,19 @@ describe('rotation store', () => {
     expect(s.form?.spec.style).toBe('clean');
     expect(s.generated).toHaveLength(18);
     expect(s.generated.some((g) => g.id === s.hiddenShotId)).toBe(true);
+  });
+
+  it('applyExercise commits its settings and the new object together', () => {
+    const store = createRotationStore(wasm);
+    store.newObject();
+    const seen: RotationState[] = [];
+    const stop = effect(() => void seen.push(store.state.value));
+    store.applyExercise('stacks');
+    stop();
+    // the effect's first run, then exactly one change: never new settings with the old shots
+    expect(seen).toHaveLength(2);
+    expect(seen[1].settings.exercise).toBe('stacks');
+    expect(seen[1].form?.version).toBe(2);
   });
 
   it('store.variation keeps the recipe', () => {

@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { batch, signal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import { buildForm } from '../../geometry/build-form';
 import { generateCleanForm, varyCleanForm } from '../../geometry/clean/generate-clean';
@@ -54,9 +54,12 @@ export function createRotationStore(wasm: ManifoldToplevel) {
     dispatch(setForm, next, buildForm(wasm, next), Math.random());
   }
 
+  /** One change: the new settings never show with the old object's shots. */
   function applyExercise(id: ExerciseId): void {
-    dispatch(applyExerciseTo, id);
-    newObject();
+    batch(() => {
+      dispatch(applyExerciseTo, id);
+      newObject();
+    });
   }
 
   function openSaved(set: OpenableSet): void {

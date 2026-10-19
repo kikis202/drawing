@@ -1,4 +1,4 @@
-/* Rotation study, desktop: contact sheet on the left, live view and controls on the right. */
+/* Rotation study, desktop: contact sheet on the left, live view and the panel on the right. */
 
 .app-main:has(> .rotation) {
   padding: 0;
@@ -13,7 +13,7 @@
 
 .rotation {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   height: 100%;
   min-height: 0;
 }
@@ -62,6 +62,11 @@
   border-color: var(--line);
   background: var(--panel);
   opacity: 1;
+}
+
+.btn-small {
+  padding: 4px 10px;
+  font-size: 13px;
 }
 
 .rotation :focus-visible,
@@ -135,6 +140,31 @@
   background: #fff;
 }
 
+/* "Hide one shot to test me": a blank print that names the view to draw. */
+.shot-cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 16px 16px 56px;
+  background: repeating-linear-gradient(-45deg, #fff 0 9px, var(--paper) 9px 10px);
+  color: var(--graphite);
+  font-size: 15px;
+  font-weight: 600;
+  font-stretch: 75%;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.shot-reveal {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+}
+
 .shot-label {
   position: absolute;
   left: 8px;
@@ -175,12 +205,12 @@
 }
 
 /* Side panel. */
+/* The live view and Save stay put; only the panel between them scrolls. */
 .rotation-side {
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--line);
   background: #fff;
-  overflow: auto;
   min-height: 0;
 }
 
@@ -231,99 +261,288 @@
   pointer-events: none;
 }
 
-.controls {
+/* The panel under the live view: Exercise, Shots, Customise, then Save. */
+.panel {
   display: flex;
   flex-direction: column;
-  flex: 1 0 auto;
-  gap: 20px;
-  padding: 18px 16px 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   font-size: 14px;
 }
 
-.control {
+.panel-sec {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  padding: 14px 16px 16px;
 }
 
-.control-row {
-  display: grid;
-  grid-template-columns: auto auto;
-  justify-content: start;
-  column-gap: 24px;
+.panel-sec + .panel-sec {
+  border-top: 1px solid var(--line);
 }
 
-.control-label {
-  color: var(--graphite-2);
-  font-size: 13px;
+.panel-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  font-stretch: 88%;
+  line-height: 20px;
 }
 
-.chips {
+.field {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
 }
 
-.chip {
-  padding: 4px 11px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #fff;
+.field-label {
   color: var(--graphite-2);
   font-size: 13px;
+}
+
+.panel-note {
+  margin: 0;
+  color: var(--graphite-2);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.panel-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.panel-save {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.save {
+  width: 100%;
+  padding: 10px 12px;
+}
+
+/* Exercise cards: a name and one line about it; the chosen one is outlined in non-photo blue. */
+.presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.preset {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--graphite);
+  text-align: left;
   cursor: pointer;
 }
 
-.chip:hover {
+.preset:hover {
+  border-color: var(--graphite-2);
+}
+
+.preset[aria-pressed='true'] {
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue);
+}
+
+.preset-name {
+  font-size: 14px;
+  font-weight: 650;
+  font-stretch: 92%;
+  line-height: 1.2;
+}
+
+.preset-blurb {
+  color: var(--graphite-2);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* Shot patterns: a small diagram of the camera positions over the name. */
+.pats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.pat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px 2px 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--graphite-2);
+  font-size: 12px;
+  font-stretch: 75%;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+}
+
+.pat svg {
+  width: 34px;
+  height: 28px;
+}
+
+.pat:hover {
+  border-color: var(--graphite-2);
+}
+
+.pat[aria-pressed='true'] {
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue);
+  color: var(--graphite);
+}
+
+/* Segmented control: the chosen segment is a white key on the grey track. */
+.seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.seg button {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--graphite-2);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.seg button:hover {
+  color: var(--graphite);
+}
+
+.seg button[aria-pressed='true'] {
+  background: #fff;
+  color: var(--graphite);
+  box-shadow: 0 1px 2px rgba(38, 41, 45, 0.18);
+}
+
+.field .btn-small {
+  align-self: flex-start;
+}
+
+/* Toggle chips: on is inked in graphite. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--graphite);
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.chip:hover:not(:disabled) {
   border-color: var(--graphite-2);
 }
 
 .chip[aria-pressed='true'] {
   border-color: var(--graphite);
-  color: var(--graphite);
+  background: var(--graphite);
+  color: #fff;
 }
 
-.chip[aria-pressed='true']::before {
-  content: '✓ ';
-}
-
-.stepper {
-  display: inline-flex;
-  align-items: center;
-  width: max-content;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-}
-
-.stepper button {
-  width: 32px;
-  height: 30px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
+.chip:disabled {
+  border-style: dashed;
   background: transparent;
-  color: var(--graphite);
-  font-size: 16px;
-  cursor: pointer;
-}
-
-.stepper button:hover:not(:disabled) {
-  background: var(--paper);
-}
-
-.stepper button:disabled {
-  color: var(--line);
+  color: var(--graphite-2);
   cursor: default;
 }
 
-.stepper output {
-  min-width: 30px;
-  text-align: center;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+.chip:disabled[aria-pressed='true'] {
+  border-color: var(--graphite-2);
 }
 
-.toggle {
+.chip-note {
+  font-size: 12px;
+}
+
+/* Customise: a quiet disclosure, then the fine controls. */
+.disclosure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--graphite);
+  font: inherit;
+  cursor: pointer;
+}
+
+.disclosure svg {
+  width: 10px;
+  height: 10px;
+  transition: transform 150ms ease-in-out;
+}
+
+.disclosure[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.customise {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.customise[hidden] {
+  display: none;
+}
+
+/* Style, Level, Shapes and Joins only change the next object, so they sit together over that note. */
+.customise-next {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.level-name {
+  font-size: 13px;
+}
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.check {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -331,19 +550,15 @@
   cursor: pointer;
 }
 
-.toggle input {
+.check input {
   width: 16px;
   height: 16px;
   margin: 0;
   accent-color: var(--blue);
 }
 
-.toggle-dash {
-  width: 24px;
-  border-top: 2px dashed var(--blue);
-}
-
-.save {
-  margin-top: auto;
-  padding: 10px 12px;
+@media (prefers-reduced-motion: reduce) {
+  .disclosure svg {
+    transition: none;
+  }
 }
