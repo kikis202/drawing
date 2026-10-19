@@ -79,4 +79,13 @@ describe('FormScene', () => {
     const q = fs.camera.quaternion;
     for (const n of [q.x, q.y, q.z, q.w]) expect(Number.isFinite(n)).toBe(true);
   });
+
+  it('draws surface, then hidden lines, then visible lines', () => {
+    const fs = new FormScene(mesh);
+    const surface = fs.scene.children.find((c) => (c as { isMesh?: boolean }).isMesh)!;
+    const { visible, hidden } = lineMaterials(fs);
+    const order = (o: unknown) => (o as { renderOrder: number }).renderOrder;
+    expect(order(hidden)).toBeGreaterThan(order(surface));
+    expect(order(visible)).toBeGreaterThan(order(hidden));
+  });
 });

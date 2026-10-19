@@ -40,7 +40,11 @@ export class FormScene {
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
     });
-    this.scene.add(new THREE.Mesh(this.meshGeometry, this.meshMaterial));
+    // Explicit draw order: surface, then hidden lines (depth-tested against the surface only),
+    // then visible lines on top. Without it three sorts by material id.
+    const surface = new THREE.Mesh(this.meshGeometry, this.meshMaterial);
+    surface.renderOrder = 0;
+    this.scene.add(surface);
 
     this.adjacency = buildEdgeAdjacency(mesh);
     this.creases = creaseSegments(this.adjacency, CREASE_DEG);
@@ -55,8 +59,11 @@ export class FormScene {
       depthFunc: THREE.GreaterDepth,
       depthWrite: false,
     });
-    this.scene.add(new LineSegments2(this.lineGeometry, this.visibleMaterial));
+    const visibleLines = new LineSegments2(this.lineGeometry, this.visibleMaterial);
+    visibleLines.renderOrder = 2;
+    this.scene.add(visibleLines);
     this.hiddenLines = new LineSegments2(this.lineGeometry, this.hiddenMaterial);
+    this.hiddenLines.renderOrder = 1;
     this.hiddenLines.visible = false;
     this.scene.add(this.hiddenLines);
 
