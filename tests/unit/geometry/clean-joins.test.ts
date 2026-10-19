@@ -97,6 +97,62 @@ describe('moduleSize', () => {
       expect([1, 1.5, 2]).toContain(s);
     }
   });
+
+  it('clamps to [0.5, 2]', () => {
+    const rand = mulberry32(5);
+    for (let i = 0; i < 200; i++) {
+      expect(moduleSize(rand, 0, 2)).toBeGreaterThanOrEqual(0.5);
+      expect(moduleSize(rand, 0.5, 3)).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
+describe('joins stay visible', () => {
+  const targets: Piece[] = [
+    target,
+    { ...target, size: [1, 1, 1] },
+    { ...target, size: [2, 1, 1.5] },
+    { ...target, size: [1, 1.5, 0.5] },
+    { ...target, size: [1, 0.5, 2], rotation: [0, 90, 0] },
+  ];
+
+  it('a box-on-box stack, wing or mirror never unions into a plain cuboid', () => {
+    let checked = 0;
+    for (const t of targets) {
+      for (const join of ['stack', 'wing', 'mirror'] as JoinKind[]) {
+        for (let slot = 0; slot < JOIN_SLOTS[join]; slot++) {
+          for (let seed = 1; seed <= 6; seed++) {
+            const placed = placeJoin(join, slot, ctx(seed, ['cube'], [t]));
+            if (!placed) continue;
+            checked++;
+            const m = buildManifold(wasm, [t, ...placed.pieces]);
+            const { min, max } = m.boundingBox();
+            const aabb = (max[0] - min[0]) * (max[1] - min[1]) * (max[2] - min[2]);
+            expect(m.volume()).toBeLessThan(aabb - 1e-6);
+            m.delete();
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  it('no two consecutive totem cylinders share a diameter', () => {
+    for (const t of targets) {
+      for (let slot = 0; slot < JOIN_SLOTS.totem; slot++) {
+        for (let seed = 1; seed <= 20; seed++) {
+          const placed = placeJoin('totem', slot, ctx(seed, PRIMITIVES, [t]));
+          if (!placed) continue;
+          const ps = placed.pieces;
+          for (let i = 1; i < ps.length; i++) {
+            if (ps[i].type === 'cylinder' && ps[i - 1].type === 'cylinder') {
+              expect(ps[i].size[0]).toBeLessThan(ps[i - 1].size[0]);
+            }
+          }
+        }
+      }
+    }
+  });
 });
 
 describe('placeJoin on a 1.5x1x1 box', () => {
@@ -300,6 +356,18 @@ describe('placeJoin edge cases', () => {
     expect(b.min[1]).toBeCloseTo(0.5, 9);
     expect(b.max[0] - b.min[0]).toBeLessThanOrEqual(1 + EPS);
     expect(b.max[2] - b.min[2]).toBeLessThanOrEqual(1.5 + EPS);
+  });
+
+  it('a target turned by other than 90 degrees gives null for every join', () => {
+    const lid = placeJoin('hinged', 0, ctx(1))!.pieces[0];
+    const tilt = placeJoin('tilt45', 0, ctx(1))!.pieces[0];
+    for (const t of [lid, tilt]) {
+      for (const join of JOINS) {
+        for (let slot = 0; slot < JOIN_SLOTS[join]; slot++) {
+          expect(placeJoin(join, slot, ctx(1, PRIMITIVES, [t]))).toBeNull();
+        }
+      }
+    }
   });
 
   it('the same rand sequence gives the same pieces', () => {

@@ -31,6 +31,9 @@ import { PRIMITIVES, type JoinKind, type Piece, type PrimitiveType, type Vec3 } 
  * Targets: stack and cut accept a box or a cylinder (cylinder: only its end caps / along its axis, centred);
  * every other join needs a box. A sphere is placed only on a +Y stack or as a totem cap, sunk 0.25 into the piece
  * below so the contact is an area, not a point. The slot never wraps: a slot >= JOIN_SLOTS gives null.
+ * A target turned by anything but quarter turns gives null. So every join stays visible, a box child of a box
+ * (centred stack, wing, mirror) is a module narrower than its face on at least one axis, and stacked totem
+ * cylinders step in by a module each.
  */
 
 export const MODULE = 0.5;
@@ -80,9 +83,9 @@ function pick<T>(rand: () => number, values: T[]): T {
   return values[Math.min(values.length - 1, Math.floor(rand() * values.length))];
 }
 
-/** A multiple of 0.5 in [min, max]. */
+/** A multiple of 0.5 in [min, max], clamped to [0.5, 2]. */
 export function moduleSize(rand: () => number, min = 0.5, max = 2): number {
-  const sizes = moduleSizes(min, max);
+  const sizes = moduleSizes(Math.max(min, MIN_SIZE), Math.min(max, MAX_SIZE));
   if (sizes.length === 0) throw new RangeError(`no multiple of ${MODULE} in [${min}, ${max}]`);
   return pick(rand, sizes);
 }
@@ -212,6 +215,19 @@ function crossAndLength(
   return ws;
 }
 
+/** A box along `axis` whose footprint is a module narrower than `crossHi` on at least one face axis, so it
+ *  never just extends the face it sits on into one plain cuboid. */
+function narrowerBox(rand: () => number, axis: number, crossHi: [number, number], lengthHi: number): Vec3 | null {
+  const first = pick(rand, [0, 1]);
+  for (const k of [first, 1 - first]) {
+    const hi: [number, number] = [...crossHi];
+    hi[k] -= MODULE;
+    const ws = crossAndLength(rand, 'cube', axis, hi, lengthHi);
+    if (ws) return ws;
+  }
+  return null;
+}
+
 const STACK_FACES: [number, 1 | -1][] = [
   [1, 1],
   [0, 1],
@@ -246,7 +262,10 @@ function stack(ctx: JoinContext, t: Shape, slot: number, spin: number): Piece | 
     const s = Math.min(...crossHi) / Math.SQRT2;
     crossHi = [s, s];
   }
-  const ws = crossAndLength(ctx.rand, spin ? 'pyramid' : type, axis, crossHi, MAX_SIZE);
+  const fullFace = type === 'cube' && !spin && t.kind === 'box' && spot === 0;
+  const ws = fullFace
+    ? narrowerBox(ctx.rand, axis, crossHi, MAX_SIZE)
+    : crossAndLength(ctx.rand, spin ? 'pyramid' : type, axis, crossHi, MAX_SIZE);
   if (!ws) return null;
   const face = sign > 0 ? t.max[axis] : t.min[axis];
   const half = type === 'sphere' ? ws[axis] / 2 - SPHERE_SINK : ws[axis] / 2;
@@ -268,11 +287,9 @@ function wing(ctx: JoinContext, t: Shape, slot: number): Piece | null {
   const plane = Math.floor(slot / 4) % 2;
   const spot = Math.floor(slot / 8);
   const across = axis === 0 ? 2 : 0;
-  const hi: Vec3 = [0, 0, 0];
-  hi[axis] = MAX_SIZE;
-  hi[1] = t.ext[1];
-  hi[across] = t.ext[across];
-  const ws = pickDims(ctx.rand, [0, 0, 0], hi) as Vec3 | null;
+  const [u, v] = others(axis);
+  // lower than the target or narrower across it, so the L / T step shows
+  const ws = narrowerBox(ctx.rand, axis, [t.ext[u], t.ext[v]], MAX_SIZE);
   if (!ws) return null;
   const position = [...t.centre] as Vec3;
   position[axis] = (sign > 0 ? t.max[axis] : t.min[axis]) + (sign * ws[axis]) / 2;
@@ -304,12 +321,17 @@ function totem(ctx: JoinContext, t: Shape, slot: number): Piece[] | null {
   let width = Math.min(t.ext[0], t.ext[2]);
   let top = t.max[1];
   for (let i = 0; i < slot + 2; i++) {
+    // each cylinder above the first is a module narrower than the one below, so the steps show; a cone or
+    // sphere cap may be as wide as the one below
+    const narrower = i > 0 ? width - MODULE : width;
     // nothing stands on a cone's apex, and a sphere is a cap only (sunk on both sides it would vanish)
-    const types = i < slot + 1 ? round.filter((r) => r === 'cylinder') : round;
+    const types = (i < slot + 1 ? round.filter((r) => r === 'cylinder') : round).filter(
+      (r) => r !== 'cylinder' || narrower >= MIN_SIZE - EPS,
+    );
     if (types.length === 0) return null;
     const type = pick(ctx.rand, types);
-    // each piece is no wider than the one below, like a lathe-turned post
-    const ws = crossAndLength(ctx.rand, type, 1, [width, width], MAX_SIZE);
+    const limit = type === 'cylinder' ? narrower : width;
+    const ws = crossAndLength(ctx.rand, type, 1, [limit, limit], MAX_SIZE);
     if (!ws) return null;
     const bottom = type === 'sphere' ? top - SPHERE_SINK : top;
     out.push(piece(type, 1, 1, ws, [t.centre[0], bottom + ws[1] / 2, t.centre[2]]));
@@ -364,7 +386,10 @@ function mirror(ctx: JoinContext, t: Shape, slot: number): Piece[] | null {
   const spot = Math.floor(slot / 2);
   const type = pick(ctx.rand, types);
   const crossHi: [number, number] = axis === 0 ? [t.ext[1], t.ext[2]] : [t.ext[0], t.ext[1]];
-  const ws = crossAndLength(ctx.rand, type, axis, crossHi, MAX_SIZE);
+  const ws =
+    type === 'cube'
+      ? narrowerBox(ctx.rand, axis, crossHi, MAX_SIZE)
+      : crossAndLength(ctx.rand, type, axis, crossHi, MAX_SIZE);
   if (!ws) return null;
   const position = [...t.centre] as Vec3;
   if (spot === 1) position[1] = t.max[1] - ws[1] / 2;
@@ -467,6 +492,8 @@ function cut(ctx: JoinContext, t: Shape, slot: number): Piece | null {
 export function placeJoin(join: JoinKind, slot: number, ctx: JoinContext): Placed | null {
   const target = ctx.pieces[ctx.target];
   if (!target || target.op !== 'add' || slot < 0 || slot >= JOIN_SLOTS[join] || !Number.isInteger(slot)) return null;
+  // world extents below assume quarter turns; a hinged lid or 45 degree piece can't be a target
+  if (target.rotation.some((r) => Math.abs(r / 90 - Math.round(r / 90)) > EPS)) return null;
   const t = shapeOf(target);
   let pieces: Piece[] | null = null;
   const one = (p: Piece | null) => (p ? [p] : null);
