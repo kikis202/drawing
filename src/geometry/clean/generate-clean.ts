@@ -93,6 +93,8 @@ const TILTED: JoinKind[] = ['hinged', 'tilt45'];
 const CHEST_LID_SLOT = 18;
 /** Share of chest recipes that are closed (a half-sunk lid) rather than open (a hinged lid). */
 const CLOSED_CHEST = 0.5;
+/** Joins a chest recipe can keep; with any other enabled, Level 6 generates as usual. */
+const CHEST_JOINS: JoinKind[] = ['stack', 'halfSunk', 'hinged', 'cut'];
 const ROUND: PrimitiveType[] = ['cylinder', 'cone', 'sphere'];
 
 function pick<T>(rand: () => number, values: T[]): T {
@@ -474,11 +476,15 @@ function attempt(wasm: ManifoldToplevel, seed: number, settings: CleanSettings):
   const tilt = settings.level === 6 && extras.length > 0;
   const cutNeeded = settings.level === 5 && extras.length > 0;
   const cutMaybe = settings.level === 6 && joins.includes('cut') && rand() < OPTIONAL_CUT;
-  // ruling P24: with Half-sunk and Hinged lid on (and no 45° piece), a Level 6 recipe is a chest, either closed (the
-  // base and a half-sunk lid) or open (the base and a hinged lid, then stacks). Either lid is the level's extra,
-  // and the piece count is a cap, not a floor
+  // rulings P24-P26: with Half-sunk and Hinged lid on, a cylinder allowed and no join a chest would drop (so no 45°
+  // piece), a Level 6 recipe is a chest, either closed (the base and a half-sunk lid) or open (the base and a hinged
+  // lid, then stacks). Either lid is the level's extra, and the piece count is a cap, not a floor
   const isChest =
-    tilt && extras.includes('hinged') && !extras.includes('tilt45') && regular.includes('halfSunk') && type === 'cube';
+    joins.includes('hinged') &&
+    joins.includes('halfSunk') &&
+    joins.every((j) => CHEST_JOINS.includes(j)) &&
+    type === 'cube' &&
+    plan.types.includes('cylinder');
   if (isChest) plan.chest = rand() < CLOSED_CHEST ? 'closed' : 'open';
   const closed = plan.chest === 'closed';
   const first: JoinKind[] = closed ? ['halfSunk'] : tilt ? extras : [];

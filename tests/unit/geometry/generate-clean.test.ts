@@ -205,6 +205,24 @@ describe('generateCleanForm', () => {
     expect(open).toBeGreaterThanOrEqual(70);
   }, 60_000);
 
+  it('makes chest recipes only for chest-like settings with a cylinder', () => {
+    const isClosed = (spec: FormSpec) => steps(spec).some((s) => s.join === 'halfSunk' && s.slot >= 18);
+    const noCylinder: CleanSettings = { level: 6, allowed: ['cube', 'cone'], joins: ['stack', 'halfSunk', 'hinged'] };
+    const tilt45: CleanSettings = { level: 6, allowed: PRIMITIVES, joins: ['stack', 'halfSunk', 'hinged', 'tilt45'] };
+    const others: CleanSettings = {
+      level: 6,
+      allowed: PRIMITIVES,
+      joins: ['halfSunk', 'hinged', 'wing', 'mirror', 'totem', 'through'],
+    };
+    for (let seed = 1; seed <= 60; seed++) {
+      const plain = generateCleanForm(wasm, seed, noCylinder);
+      expect(steps(plain).some((s) => s.join === 'hinged'), `seed ${seed}`).toBe(true);
+      expect(adds(plain).length).toBeGreaterThanOrEqual(2);
+      expect(isClosed(generateCleanForm(wasm, seed, tilt45)), `seed ${seed}`).toBe(false);
+      expect(isClosed(generateCleanForm(wasm, seed, others)), `seed ${seed}`).toBe(false);
+    }
+  }, 60_000);
+
   it('variation keeps the recipe and changes proportions', () => {
     let changed = 0;
     for (let seed = 1; seed <= 10; seed++) {
