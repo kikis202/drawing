@@ -8,4 +8,5 @@ export interface Shot {
   id: string;
   view: View;
   source: 'generated' | 'custom';
+  role?: 'map';
 }
