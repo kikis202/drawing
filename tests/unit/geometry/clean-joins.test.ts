@@ -137,6 +137,25 @@ describe('joins stay visible', () => {
     expect(checked).toBeGreaterThan(100);
   });
 
+  it('a cylinder stacked on a cylinder is narrower than it', () => {
+    const cyls: Piece[] = [
+      { type: 'cylinder', size: [1, 1.5, 1], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' },
+      { type: 'cylinder', size: [1.5, 1, 1.5], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' },
+    ];
+    let checked = 0;
+    for (const t of cyls) {
+      for (let slot = 0; slot < JOIN_SLOTS.stack; slot++) {
+        for (let seed = 1; seed <= 10; seed++) {
+          const placed = placeJoin('stack', slot, ctx(seed, ['cylinder'], [t]));
+          if (!placed) continue;
+          checked++;
+          expect(placed.pieces[0].size[0]).toBeLessThan(t.size[0]);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it('no two consecutive totem cylinders share a diameter', () => {
     for (const t of targets) {
       for (let slot = 0; slot < JOIN_SLOTS.totem; slot++) {

@@ -33,7 +33,7 @@ import { PRIMITIVES, type JoinKind, type Piece, type PrimitiveType, type Vec3 } 
  * below so the contact is an area, not a point. The slot never wraps: a slot >= JOIN_SLOTS gives null.
  * A target turned by anything but quarter turns gives null. So every join stays visible, a box child of a box
  * (centred stack, wing, mirror) is a module narrower than its face on at least one axis, and stacked totem
- * cylinders step in by a module each.
+ * cylinders, and a cylinder stacked on a cylinder, step in by a module each.
  */
 
 export const MODULE = 0.5;
@@ -262,6 +262,8 @@ function stack(ctx: JoinContext, t: Shape, slot: number, spin: number): Piece | 
     const s = Math.min(...crossHi) / Math.SQRT2;
     crossHi = [s, s];
   }
+  // a cylinder of the same diameter would just lengthen the target
+  if (type === 'cylinder' && t.kind === 'cylinder') crossHi = [crossHi[0] - MODULE, crossHi[1] - MODULE];
   const fullFace = type === 'cube' && !spin && t.kind === 'box' && spot === 0;
   const ws = fullFace
     ? narrowerBox(ctx.rand, axis, crossHi, MAX_SIZE)
