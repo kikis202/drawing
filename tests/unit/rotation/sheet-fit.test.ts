@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitColumns, fitSheet } from '../../../src/modes/rotation/sheet-fit';
+import { fitColumns, fitSheet, GRID_MIN_TILE } from '../../../src/modes/rotation/sheet-fit';
 
 describe('fitSheet', () => {
   it('lays 8 shots out in 4 columns in a desktop-sized area', () => {
@@ -43,17 +43,30 @@ describe('fitColumns', () => {
     expect(2 * fit.tile + 14).toBeLessThanOrEqual(845);
   });
 
-  it('scrolls rather than shrinking tiles under the minimum to fit the height', () => {
-    const fit = fitColumns(5, 4, 1140, 400, 14);
+  it('fills the height when the width allows', () => {
+    const fit = fitColumns(2, 4, 1140, 400, 14);
     expect(fit.cols).toBe(4);
-    expect(fit.tile).toBe(180);
+    expect(fit.tile).toBe(193);
   });
 
-  it('never goes wider than the area, even below the minimum', () => {
-    const fit = fitColumns(5, 8, 1080, 810, 14);
+  it('keeps tiles at 140px and lets the sheet scroll down when the rows do not fit', () => {
+    const fit = fitColumns(5, 4, 1140, 400, 14);
+    expect(fit.cols).toBe(4);
+    expect(fit.tile).toBe(140);
+  });
+
+  it('keeps tiles at 140px and lets the sheet scroll sideways when the columns do not fit', () => {
+    const fit = fitColumns(5, 8, 700, 600, 14);
     expect(fit.cols).toBe(8);
-    expect(Number.isInteger(fit.tile)).toBe(true);
-    expect(8 * fit.tile + 7 * 14).toBeLessThanOrEqual(1080);
-    expect(fit.tile).toBeGreaterThan(100);
+    expect(fit.tile).toBe(GRID_MIN_TILE);
+    expect(8 * fit.tile + 7 * 14).toBeGreaterThan(700);
+  });
+
+  it('never goes under the 140px floor', () => {
+    for (const [rows, cols, w, h] of [[3, 6, 1080, 810], [5, 8, 1080, 810], [5, 8, 900, 700], [6, 8, 500, 400]]) {
+      const { tile } = fitColumns(rows, cols, w, h, 14);
+      expect(Number.isInteger(tile)).toBe(true);
+      expect(tile).toBeGreaterThanOrEqual(140);
+    }
   });
 });

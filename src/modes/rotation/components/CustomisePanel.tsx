@@ -19,7 +19,7 @@ const JOIN_NAMES: Record<JoinKind, string> = {
   stack: 'Stack',
   totem: 'Totem',
   halfSunk: 'Half-sunk',
-  wing: 'L / T wing',
+  wing: 'Wing (L / T)',
   through: 'Through',
   mirror: 'Mirror pair',
   hinged: 'Hinged lid',

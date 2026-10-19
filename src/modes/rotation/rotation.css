@@ -81,7 +81,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   align-content: start;
-  justify-content: center;
+  justify-content: safe center;
   margin: 0;
   padding: 20px;
   list-style: none;
@@ -147,7 +147,7 @@
   justify-content: center;
   width: 100%;
   height: 100%;
-  padding: 16px 16px 56px;
+  padding: 12px 12px 48px;
   background: repeating-linear-gradient(-45deg, #fff 0 9px, var(--paper) 9px 10px);
   color: var(--graphite);
   font-size: 15px;
@@ -161,13 +161,18 @@
 .shot-reveal {
   position: absolute;
   left: 50%;
-  bottom: 18px;
+  bottom: 12px;
   transform: translateX(-50%);
 }
 
 .shot-label {
   position: absolute;
   left: 8px;
+  right: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
   bottom: 6px;
   color: var(--graphite-2);
   font-size: 13px;

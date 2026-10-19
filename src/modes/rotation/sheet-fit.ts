@@ -27,13 +27,22 @@ export function fitSheet(n: number, width: number, height: number, gap: number, 
   return { cols, tile: Math.max(0, Math.floor(across(cols))) };
 }
 
+/** Grid tiles stay at least this big; past it the sheet scrolls, sideways too if the columns don't fit. */
+export const GRID_MIN_TILE = 140;
+
 /**
- * Square tiles in exactly `cols` columns over `rows` rows, as large as fit the area. Tiles shrink to fit the
- * height only down to `minTile`, then the sheet scrolls; they never get wider than the area allows.
+ * Square tiles in exactly `cols` columns over `rows` rows, as large as fit the area, but never under
+ * `minTile`. Below that the tiles keep `minTile` and the sheet scrolls in whichever direction overflows.
  */
-export function fitColumns(rows: number, cols: number, width: number, height: number, gap: number, minTile = MIN_TILE): SheetFit {
+export function fitColumns(
+  rows: number,
+  cols: number,
+  width: number,
+  height: number,
+  gap: number,
+  minTile = GRID_MIN_TILE,
+): SheetFit {
   const across = (width - (cols - 1) * gap) / cols;
   const down = (height - (Math.max(1, rows) - 1) * gap) / Math.max(1, rows);
-  const tile = Math.min(across, Math.max(down, minTile));
-  return { cols, tile: Math.max(0, Math.floor(tile)) };
+  return { cols, tile: Math.floor(Math.max(minTile, Math.min(across, down))) };
 }

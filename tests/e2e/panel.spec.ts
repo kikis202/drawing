@@ -211,3 +211,53 @@ test('a sequence starts from the live view', async ({ page }) => {
   await page.getByRole('button', { name: 'Start from live view' }).click()
   await expect(tiles(page).first().getByRole('button')).toHaveAccessibleName(moved)
 })
+
+test('a large grid keeps tiles readable and scrolls to its last column', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await pattern(page, 'Grid').click()
+  await option(page, 'Grid size', '8 × 5').click()
+  await expect(tiles(page)).toHaveCount(40)
+  await expect
+    .poll(async () => Math.min(...(await tiles(page).evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width)))))
+    .toBeGreaterThanOrEqual(140)
+  const overflow = await sheet(page).evaluate((el) => el.scrollWidth - el.clientWidth)
+  expect(overflow).toBeGreaterThan(0)
+  // the eighth column is reachable: scrolled fully right, it sits inside the sheet
+  await sheet(page).evaluate((el) => el.scrollTo({ left: el.scrollWidth, top: 0 }))
+  const box = (await sheet(page).boundingBox())!
+  const eighth = (await tiles(page).nth(7).boundingBox())!
+  expect(eighth.x).toBeGreaterThanOrEqual(box.x)
+  expect(eighth.x + eighth.width).toBeLessThanOrEqual(box.x + box.width)
+  // and so is the first, scrolled back
+  await sheet(page).evaluate((el) => el.scrollTo({ left: 0, top: 0 }))
+  const first = (await tiles(page).first().boundingBox())!
+  expect(first.x).toBeGreaterThanOrEqual(box.x)
+})
+
+test('clicking what is already selected changes nothing', async ({ page }) => {
+  await customise(page).click()
+  await page.getByRole('checkbox', { name: 'Hide one shot to test me' }).check()
+  await pattern(page, 'Sequence').click()
+  await expect(tiles(page)).toHaveCount(6)
+  const covered = sheet(page).getByText(/^Draw this view: /)
+  await expect(covered).toHaveCount(1)
+  const label = await covered.textContent()
+  for (let i = 0; i < 3; i++) {
+    await pattern(page, 'Sequence').click()
+    await option(page, 'Axis', 'Vertical').click()
+    await option(page, 'Steps', '6 × 15°').click()
+    await page.getByRole('button', { name: 'Start from live view' }).click()
+    await page.getByRole('button', { name: 'Start from live view' }).click()
+  }
+  await expect(covered).toHaveCount(1)
+  await expect(covered).toHaveText(label!)
+
+  // the selected exercise card keeps its object
+  await page.getByRole('checkbox', { name: 'Hide one shot to test me' }).uncheck()
+  await card(page, 'Stacks and totems').click()
+  const before = await renderedSrcs(page, 8)
+  await card(page, 'Stacks and totems').click()
+  await expect(card(page, 'Stacks and totems')).toHaveAttribute('aria-pressed', 'true')
+  await page.waitForTimeout(300)
+  expect(await renderedSrcs(page, 8)).toEqual(before)
+})
