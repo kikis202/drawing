@@ -121,3 +121,46 @@ test('resize keeps the snapped view', async ({ page }) => {
   await expect(readout(page)).toHaveText('180° turn, 0° tilt')
   await expect(tile(page, '180° turn, 0° tilt')).toHaveAttribute('aria-current', 'true')
 })
+
+test('the sheet fills the main area with large tiles', async ({ page }) => {
+  const widths = await tiles(page).evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width))
+  expect(Math.min(...widths)).toBeGreaterThanOrEqual(240)
+  const box = (await sheet(page).boundingBox())!
+  const last = (await tiles(page).last().boundingBox())!
+  expect(last.y + last.height).toBeLessThanOrEqual(box.y + box.height)
+})
+
+test('a tile never shows an image that belonged to another view', async ({ page }) => {
+  await renderedSrcs(page, 8)
+  await sheet(page).evaluate((list) => {
+    const seen = new Map<string, string>()
+    const conflicts: string[] = []
+    const scan = () => {
+      for (const li of list.querySelectorAll('li')) {
+        const src = li.querySelector('img')?.getAttribute('src')
+        if (!src) continue
+        const label = li.querySelector('button')!.textContent!
+        const prev = seen.get(src)
+        if (prev !== undefined && prev !== label) conflicts.push(`${src}: ${prev} -> ${label}`)
+        seen.set(src, label)
+      }
+    }
+    scan()
+    new MutationObserver(scan).observe(list, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true,
+    })
+    ;(window as unknown as { staleConflicts: string[] }).staleConflicts = conflicts
+  })
+  const more = page.getByRole('button', { name: 'More shots' })
+  await more.click()
+  await renderedSrcs(page, 9)
+  await more.click()
+  await renderedSrcs(page, 10)
+  await page.getByRole('button', { name: 'Fewer shots' }).click()
+  await renderedSrcs(page, 9)
+  const conflicts = await page.evaluate(() => (window as unknown as { staleConflicts: string[] }).staleConflicts)
+  expect(conflicts).toEqual([])
+})

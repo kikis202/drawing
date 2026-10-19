@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { loadManifold } from '../../geometry/manifold';
 import { FormScene } from '../../render/form-scene';
 import { ShotRenderer } from '../../render/shot-renderer';
 import { applyDrag, applyKey, easeInOut, interpolateView } from '../../views/pose';
-import type { Shot } from '../../views/types';
+import type { Shot, View } from '../../views/types';
 import { ContactSheet } from './components/ContactSheet';
 import { Controls } from './components/Controls';
 import { LiveView } from './components/LiveView';
@@ -30,7 +30,8 @@ const SNAP_MS = 450;
 function hasWebGL(): boolean {
   try {
     const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    // three.js needs WebGL 2.
+    const gl = canvas.getContext('webgl2');
     gl?.getExtension('WEBGL_lose_context')?.loseContext();
     return gl !== null;
   } catch {
@@ -75,35 +76,72 @@ export default function RotationMode() {
         This browser can't show 3D graphics. WebGL is turned off or not supported.
       </p>
     );
-  return <RotationStudy store={status} />;
+  return <RotationStudy store={status} onNoWebGL={() => setStatus('no-webgl')} />;
 }
 
-function RotationStudy({ store }: { store: Store }) {
+/** What a shot image shows; an image is only used for a tile whose tag still matches. */
+const imageTag = (version: number, hidden: boolean, view: View) =>
+  `${version}|${hidden}|${view.turn}|${view.tilt}`;
+
+interface Props {
+  store: Store;
+  onNoWebGL: () => void;
+}
+
+function RotationStudy({ store, onNoWebGL }: Props) {
   const s = store.state.value;
-  const [urls, setUrls] = useState<ReadonlyMap<string, string>>(new Map());
-  const images = useRef<ShotImages | null>(null);
+  const [images, setImages] = useState<ReadonlyMap<string, { url: string; tag: string }>>(new Map());
+  const shotImages = useRef<ShotImages | null>(null);
+  const requested = useRef<{ version: number; hidden: boolean; shots: Shot[] } | null>(null);
   const snapFrame = useRef(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // One shot renderer for the mode's lifetime: WebGL contexts are scarce.
-    const renderer = new ShotRenderer();
+    let renderer: ShotRenderer;
+    try {
+      renderer = new ShotRenderer();
+    } catch {
+      onNoWebGL();
+      return;
+    }
     let live = true;
-    const shotImages = new ShotImages(renderer, (mesh) => new FormScene(mesh), (next) => {
-      if (live) setUrls(next);
+    const queue = new ShotImages(renderer, (mesh) => new FormScene(mesh), (urls) => {
+      const req = requested.current;
+      if (!live || !req) return;
+      const next = new Map<string, { url: string; tag: string }>();
+      for (const shot of req.shots) {
+        const url = urls.get(shot.id);
+        if (url) next.set(shot.id, { url, tag: imageTag(req.version, req.hidden, shot.view) });
+      }
+      setImages(next);
     });
-    images.current = shotImages;
+    shotImages.current = queue;
     return () => {
       live = false;
       cancelAnimationFrame(snapFrame.current);
-      shotImages.dispose();
+      queue.dispose();
       renderer.dispose();
-      images.current = null;
+      shotImages.current = null;
     };
   }, []);
 
-  useEffect(() => {
-    if (s.form) images.current?.update(s.form, allShots(s), s.settings.hidden);
+  // A layout effect, so the queue drops stale images before the browser paints.
+  useLayoutEffect(() => {
+    if (!s.form) return;
+    const shots = allShots(s);
+    requested.current = { version: s.form.version, hidden: s.settings.hidden, shots };
+    shotImages.current?.update(s.form, shots, s.settings.hidden);
   }, [s.form, s.generated, s.custom, s.settings.hidden]);
+
+  // Never hand a tile an image made for another view, form or hidden-lines setting,
+  // even for the one render before the queue has caught up.
+  const urls = new Map<string, string>();
+  for (const shot of allShots(s)) {
+    const image = images.get(shot.id);
+    if (image && s.form && image.tag === imageTag(s.form.version, s.settings.hidden, shot.view)) {
+      urls.set(shot.id, image.url);
+    }
+  }
 
   const cancelSnap = () => {
     cancelAnimationFrame(snapFrame.current);
@@ -172,6 +210,7 @@ function RotationStudy({ store }: { store: Store }) {
           hidden={s.settings.hidden}
           onDrag={onDrag}
           onDragStart={cancelSnap}
+          onWebGLError={onNoWebGL}
           onKey={onKey}
           onCapture={() => {
             cancelSnap();

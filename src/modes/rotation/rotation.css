@@ -70,16 +70,18 @@
   outline-offset: 2px;
 }
 
-/* Contact sheet: white prints laid on a grey bed. */
+/* Contact sheet: white prints laid on a grey bed. Columns are fitted in ContactSheet;
+   this is the layout before the first measurement. */
 .sheet {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   align-content: start;
-  gap: 14px;
+  justify-content: center;
   margin: 0;
   padding: 20px;
   list-style: none;
   overflow: auto;
+  scrollbar-gutter: stable;
   background: var(--panel);
   min-height: 0;
 }

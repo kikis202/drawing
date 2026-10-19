@@ -13,10 +13,12 @@ interface Props {
   onKey: (key: string, shift: boolean) => boolean;
   onDragStart: () => void;
   onCapture: () => void;
+  /** The renderer could not get a WebGL 2 context. */
+  onWebGLError: () => void;
 }
 
 /** The rotatable view on studio grey. Owns its own renderer and scene. */
-export function LiveView({ form, view, hidden, onDrag, onKey, onDragStart, onCapture }: Props) {
+export function LiveView({ form, view, hidden, onDrag, onKey, onDragStart, onCapture, onWebGLError }: Props) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderer = useRef<THREE.WebGLRenderer | null>(null);
@@ -42,7 +44,13 @@ export function LiveView({ form, view, hidden, onDrag, onKey, onDragStart, onCap
   }).current;
 
   useEffect(() => {
-    const r = new THREE.WebGLRenderer({ canvas: canvasRef.current!, antialias: true });
+    let r: THREE.WebGLRenderer;
+    try {
+      r = new THREE.WebGLRenderer({ canvas: canvasRef.current!, antialias: true });
+    } catch {
+      onWebGLError();
+      return;
+    }
     r.setPixelRatio(window.devicePixelRatio);
     r.setClearColor('#8F9398', 1);
     renderer.current = r;
