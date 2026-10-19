@@ -21,13 +21,34 @@ function lineGeometry(positions: ArrayLike<number>): LineSegmentsGeometry {
   return g;
 }
 
-function boxEdges([x0, y0, z0]: readonly number[], [x1, y1, z1]: readonly number[]): number[] {
-  const c = (i: number) => [i & 1 ? x1 : x0, i & 2 ? y1 : y0, i & 4 ? z1 : z0];
-  const out: number[] = [];
-  for (let i = 0; i < 8; i++) {
-    for (const bit of [1, 2, 4]) if (!(i & bit)) out.push(...c(i), ...c(i | bit));
+/**
+ * The box's 12 edges split by the camera: an edge is a back edge when both faces meeting at it
+ * face away from the camera. A camera outside the box gives 9 front and 3 back edges.
+ */
+function boxEdges(
+  min: readonly number[],
+  max: readonly number[],
+  cam: readonly number[],
+): { front: number[]; back: number[] } {
+  const front: number[] = [];
+  const back: number[] = [];
+  for (let axis = 0; axis < 3; axis++) {
+    const [a, b] = [0, 1, 2].filter((i) => i !== axis);
+    for (const sa of [0, 1]) {
+      for (const sb of [0, 1]) {
+        const faces = (i: number, hi: number) => (hi ? cam[i] > max[i] : cam[i] < min[i]);
+        const isBack = !faces(a, sa) && !faces(b, sb);
+        const p0 = [0, 0, 0];
+        p0[a] = (sa ? max : min)[a];
+        p0[b] = (sb ? max : min)[b];
+        const p1 = [...p0];
+        p0[axis] = min[axis];
+        p1[axis] = max[axis];
+        (isBack ? back : front).push(...p0, ...p1);
+      }
+    }
   }
-  return out;
+  return { front, back };
 }
 
 function gridLines(y: number): number[] {
@@ -58,6 +79,8 @@ export class FormScene {
   private readonly hiddenMaterial: LineMaterial;
   private readonly visibleLines: LineSegments2;
   private readonly hiddenLines: LineSegments2;
+  private readonly boxMin: readonly number[];
+  private readonly boxMax: readonly number[];
   private readonly boxLines: LineSegments2;
   private readonly boxHiddenLines: LineSegments2;
   private readonly centreLines: LineSegments2;
@@ -75,10 +98,20 @@ export class FormScene {
     base.dispose();
     // Steep enough that wide line quads at concave creases don't fail the depth test and
     // show as a blue hidden-line fringe beside the visible line.
-    const offset = { polygonOffset: true, polygonOffsetFactor: 3, polygonOffsetUnits: 1 };
-    this.shadedMaterial = new THREE.MeshLambertMaterial({ color: '#D5D9DD', ...offset });
+    const offset = {
+      polygonOffset: true,
+      polygonOffsetFactor: 3,
+      polygonOffsetUnits: 1,
+    };
+    this.shadedMaterial = new THREE.MeshLambertMaterial({
+      color: '#D5D9DD',
+      ...offset,
+    });
     // Unlit material for Lines only (white) and Silhouette (graphite); recoloured per mode.
-    this.flatMaterial = new THREE.MeshBasicMaterial({ color: '#FFFFFF', ...offset });
+    this.flatMaterial = new THREE.MeshBasicMaterial({
+      color: '#FFFFFF',
+      ...offset,
+    });
     // Explicit draw order: surface, then hidden lines (depth-tested against the surface only),
     // then visible lines on top. Without it three sorts by material id.
     this.surface = new THREE.Mesh(this.meshGeometry, this.shadedMaterial);
@@ -113,7 +146,7 @@ export class FormScene {
         dashed: true,
         dashSize: 0.06,
         gapSize: 0.045,
-        depthFunc: THREE.GreaterDepth,
+        depthTest: false,
         depthWrite: false,
       });
     const aid = (g: LineSegmentsGeometry, m: LineMaterial, order: number) => {
@@ -123,10 +156,26 @@ export class FormScene {
       this.scene.add(l);
       return l;
     };
-    const boxGeometry = this.aidGeometry(lineGeometry(boxEdges(mesh.bounds.min, mesh.bounds.max)));
-    this.boxLines = aid(boxGeometry, this.aidMaterial({ color: '#5E646B', linewidth: 1 }), 2);
-    this.boxHiddenLines = aid(boxGeometry, hiddenDashed('#5E646B'), 1);
-    this.boxHiddenLines.computeLineDistances();
+    // The box encloses the form, so its front edges can't be occluded and its back edges are
+    // classified from the camera, not by depth. Both passes draw under the form's visible lines.
+    this.boxMin = mesh.bounds.min;
+    this.boxMax = mesh.bounds.max;
+    const initial = boxEdges(this.boxMin, this.boxMax, [Infinity, Infinity, Infinity]);
+    this.boxLines = aid(
+      this.aidGeometry(lineGeometry(initial.front)),
+      this.aidMaterial({
+        color: '#5E646B',
+        linewidth: 1,
+        depthTest: false,
+        depthWrite: false,
+      }),
+      1.5,
+    );
+    this.boxHiddenLines = aid(
+      this.aidGeometry(lineGeometry(initial.back)),
+      hiddenDashed('#5E646B'),
+      0.5,
+    );
     this.centreLines = aid(
       this.aidGeometry(lineGeometry(mesh.axes)),
       this.aidMaterial({ color: '#3E95D1', linewidth: 1, depthTest: false }),
@@ -134,12 +183,20 @@ export class FormScene {
     );
     this.groundLines = aid(
       this.aidGeometry(lineGeometry(gridLines(mesh.bounds.min[1]))),
-      this.aidMaterial({ color: GROUND_COLOUR, linewidth: 1 }),
+      this.aidMaterial({
+        color: GROUND_COLOUR,
+        linewidth: 1,
+        depthWrite: false,
+      }),
       -1,
     );
     this.horizon = aid(
       this.aidGeometry(this.horizonGeometry),
-      this.aidMaterial({ color: GROUND_COLOUR, linewidth: 1 }),
+      this.aidMaterial({
+        color: GROUND_COLOUR,
+        linewidth: 1,
+        depthWrite: false,
+      }),
       -1,
     );
 
@@ -202,12 +259,20 @@ export class FormScene {
     this.boxHiddenLines.material.linewidth = 0.75 * aidWidth;
     this.centreLines.material.linewidth = aidWidth;
     this.boxLines.visible = opts.box;
+    if (opts.box) this.updateBox(pos);
     this.boxHiddenLines.visible = opts.box && opts.hidden && !silhouette;
     this.centreLines.visible = opts.centreLines;
     this.groundLines.visible = opts.ground;
     this.horizon.visible = opts.ground;
     this.horizon.material.linewidth = aidWidth;
     if (opts.ground) this.updateHorizon(pos);
+  }
+
+  private updateBox(pos: readonly number[]): void {
+    const { front, back } = boxEdges(this.boxMin, this.boxMax, pos);
+    this.boxLines.geometry.setPositions(front);
+    this.boxHiddenLines.geometry.setPositions(back);
+    this.boxHiddenLines.computeLineDistances();
   }
 
   /** One segment at camera height, ahead along the horizontal forward direction, across the view. */

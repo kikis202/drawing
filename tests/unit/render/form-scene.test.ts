@@ -16,7 +16,9 @@ beforeAll(async () => {
     version: 2,
     style: 'freeform',
     seed: 0,
-    pieces: [{ type: 'cube', size: [1, 1, 1], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' }],
+    pieces: [
+      { type: 'cube', size: [1, 1, 1], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' },
+    ],
   });
 });
 
@@ -28,11 +30,14 @@ function lineMaterials(fs: FormScene) {
 
 type Line = { material: any; geometry: any; visible: boolean; renderOrder: number };
 function allLines(fs: FormScene): Line[] {
-  return fs.scene.children.filter((c) => (c as { isLineSegments2?: boolean }).isLineSegments2) as unknown as Line[];
+  return fs.scene.children.filter(
+    (c) => (c as { isLineSegments2?: boolean }).isLineSegments2,
+  ) as unknown as Line[];
 }
 const VIEW = { turn: 0, tilt: 0 };
 const hex = (l: Line) => l.material.color.getHexString();
-const surfaceOf = (fs: FormScene) => fs.scene.children.find((c) => (c as { isMesh?: boolean }).isMesh) as THREE.Mesh;
+const surfaceOf = (fs: FormScene) =>
+  fs.scene.children.find((c) => (c as { isMesh?: boolean }).isMesh) as THREE.Mesh;
 const withOpts = (o: Partial<RenderOptions>): RenderOptions => ({ ...DEFAULT_RENDER, ...o });
 function endpoints(l: Line): number[] {
   return Array.from(l.geometry.getAttribute('instanceStart').data.array as Float32Array);
@@ -47,7 +52,6 @@ describe('FormScene', () => {
     expect(fs.camera.fov).toBeCloseTo(55);
     expect(fs.camera.position.length()).toBeCloseTo(lensDistance('wide'));
   });
-
 
   it('places the camera for the view', () => {
     const fs = new FormScene(mesh);
@@ -122,12 +126,12 @@ describe('FormScene', () => {
     expect(box.visible).toBe(true);
     expect(boxHidden.visible).toBe(false);
     expect(hex(box)).toBe('5e646b');
-    expect(box.geometry.instanceCount).toBe(12);
+    expect(box.geometry.instanceCount + boxHidden.geometry.instanceCount).toBe(12);
     expect(box.material.linewidth).toBeCloseTo(0.6 * 1.3333, 2);
     fs.setView(VIEW, 1, 400, withOpts({ box: true, hidden: true }));
     expect(boxHidden.visible).toBe(true);
     expect(boxHidden.material.dashed).toBe(true);
-    expect(boxHidden.material.depthFunc).toBe(THREE.GreaterDepth);
+    expect(boxHidden.material.depthTest).toBe(false);
     expect(boxHidden.material.dashSize).toBe(0.06);
     expect(boxHidden.material.gapSize).toBe(0.045);
   });
@@ -135,7 +139,7 @@ describe('FormScene', () => {
   it('centre lines draw on top in blue', () => {
     const fs = new FormScene(mesh);
     const lines = allLines(fs);
-    const centre = lines.find((l) => l.material.depthTest === false)!;
+    const centre = lines.find((l) => hex(l) === '3e95d1' && !l.material.dashed && l.material.depthTest === false)!;
     fs.setView(VIEW, 1, 400, withOpts({ centreLines: true }));
     expect(centre.visible).toBe(true);
     expect(hex(centre)).toBe('3e95d1');
@@ -162,7 +166,9 @@ describe('FormScene', () => {
   it('horizon sits at camera height, far ahead, across the view', () => {
     const fs = new FormScene(mesh);
     fs.setView({ turn: 30, tilt: 20 }, 1, 400, withOpts({ ground: true }));
-    const horizon = allLines(fs).find((l) => hex(l) === 'cdd2d7' && l.geometry.instanceCount === 1)!;
+    const horizon = allLines(fs).find(
+      (l) => hex(l) === 'cdd2d7' && l.geometry.instanceCount === 1,
+    )!;
     const [ax, ay, az, bx, by, bz] = endpoints(horizon);
     const cam = fs.camera.position;
     expect(ay).toBeCloseTo(cam.y, 3);
@@ -170,7 +176,10 @@ describe('FormScene', () => {
     const mx = (ax + bx) / 2 - cam.x;
     const mz = (az + bz) / 2 - cam.z;
     expect(Math.hypot(mx, mz)).toBeCloseTo(1000, 1);
-    expect(((bx - ax) * mx + (bz - az) * mz) / (Math.hypot(bx - ax, bz - az) * 1000)).toBeCloseTo(0, 4);
+    expect(((bx - ax) * mx + (bz - az) * mz) / (Math.hypot(bx - ax, bz - az) * 1000)).toBeCloseTo(
+      0,
+      4,
+    );
     expect(fs.camera.far).toBeGreaterThanOrEqual(3000);
   });
 
@@ -210,11 +219,69 @@ describe('FormScene', () => {
     const count = { n: 0 };
     for (const o of [...geoms, ...mats]) {
       const orig = o.dispose.bind(o);
-      o.dispose = () => { count.n++; orig(); };
+      o.dispose = () => {
+        count.n++;
+        orig();
+      };
     }
     fs.dispose();
     expect(count.n).toBe(geoms.size + mats.size);
-    expect(geoms.size).toBe(5);
+    expect(geoms.size).toBe(6);
     expect(mats.size).toBe(7);
+  });
+
+  it('box passes draw under the form lines and split 9 front / 3 back', () => {
+    const fs = new FormScene(mesh);
+    const [visible, hidden, box, boxBack] = allLines(fs);
+    fs.setView({ turn: 30, tilt: 20 }, 1, 400, withOpts({ box: true, hidden: true }));
+    expect(box.renderOrder).toBeLessThan(visible.renderOrder);
+    expect(boxBack.renderOrder).toBeLessThan(visible.renderOrder);
+    expect(box.renderOrder).toBeGreaterThan(hidden.renderOrder);
+    expect(box.material.depthTest).toBe(false);
+    expect(box.geometry.instanceCount).toBe(9);
+    expect(boxBack.geometry.instanceCount).toBe(3);
+    expect(boxBack.visible).toBe(true);
+    fs.setView({ turn: 30, tilt: 20 }, 1, 400, withOpts({ box: true }));
+    expect(boxBack.visible).toBe(false);
+  });
+
+  it('classifies the far empty corner of an L-shaped form as a back edge', async () => {
+    const wasm = await getTestManifold();
+    const cube = (position: [number, number, number]) => ({
+      type: 'cube' as const,
+      size: [1, 1, 1] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number],
+      position,
+      op: 'add' as const,
+    });
+    const l = buildForm(wasm, {
+      version: 2,
+      style: 'freeform',
+      seed: 0,
+      pieces: [cube([0, 0, 0]), cube([1, 0, 0]), cube([0, 0, 1])],
+    });
+    const fs = new FormScene(l);
+    // Camera on the -x/-z side looking at +x/+z: the empty corner (max x, max z) is far away.
+    fs.setView({ turn: 225, tilt: 20 }, 1, 400, withOpts({ box: true, hidden: true }));
+    const back = endpoints(allLines(fs)[3]);
+    const { max } = l.bounds;
+    const vertical = [];
+    for (let i = 0; i < back.length; i += 6) {
+      if (
+        Math.abs(back[i] - max[0]) < 1e-4 &&
+        Math.abs(back[i + 2] - max[2]) < 1e-4 &&
+        Math.abs(back[i] - back[i + 3]) < 1e-4 &&
+        Math.abs(back[i + 1] - back[i + 4]) > 0.1
+      )
+        vertical.push(i);
+    }
+    expect(vertical).toHaveLength(1);
+  });
+
+  it('ground grid and horizon do not write depth', () => {
+    const fs = new FormScene(mesh);
+    const ground = allLines(fs).filter((l) => hex(l) === 'cdd2d7');
+    expect(ground).toHaveLength(2);
+    for (const g of ground) expect(g.material.depthWrite).toBe(false);
   });
 });
