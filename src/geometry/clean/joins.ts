@@ -9,12 +9,13 @@ import { PRIMITIVES, type JoinKind, type Piece, type PrimitiveType, type Vec3 } 
  *
  * | Join     | Slots | slot = ...                                  | Meaning                                                    |
  * |----------|-------|---------------------------------------------|------------------------------------------------------------|
- * | stack    | 25    | face + 5 * spot                             | face: +Y, +X, -X, +Z, -Z. spot: centre, third -u, third +u, |
- * |          |       |                                             | third -v, third +v (u, v = the face's axes in x, y, z order)|
+ * | stack    | 5     | spot                                        | on the top face (+Y) only: centre, third -X, third +X,     |
+ * |          |       |                                             | third -Z, third +Z                                         |
  * | totem    | 2     | count - 2                                   | 2 or 3 round pieces on the top-face centre: cylinders,     |
  * |          |       |                                             | the top one may be a cone or sphere instead                |
- * | halfSunk | 6     | axis + 2 * spot                             | axis: along X, along Z. spot: centred, flush to the -side  |
- * |          |       |                                             | edge, flush to the +side edge                              |
+ * | halfSunk | 18    | axis + 2 * (spot + 3 * end)                 | axis: along X, along Z. spot: centred, flush to the -side  |
+ * |          |       |                                             | edge, flush to the +side edge. end: centred along the edge,|
+ * |          |       |                                             | flush to its - end, flush to its + end                     |
  * | wing     | 24    | face + 4 * (plane + 2 * spot)               | face: +X, -X, +Z, -Z. plane: top, bottom. spot: centred,   |
  * |          |       |                                             | flush to the - edge, flush to the + edge                   |
  * | through  | 3     | axis                                        | X, Z, Y                                                    |
@@ -28,9 +29,11 @@ import { PRIMITIVES, type JoinKind, type Piece, type PrimitiveType, type Vec3 } 
  * |          |       |                                             | (-X+Z), (-X-Z), (+X-Z). groove: half-round along X, along Z|
  * |          |       |                                             | across the top face                                        |
  *
- * Targets: stack and cut accept a box or a cylinder (cylinder: only its end caps / along its axis, centred);
- * every other join needs a box. A sphere is placed only on a +Y stack or as a totem cap, sunk 0.25 into the piece
- * below so the contact is an area, not a point. The slot never wraps: a slot >= JOIN_SLOTS gives null.
+ * Targets: stack and cut accept a box or a cylinder (cylinder: only its upper end cap / along its axis, centred);
+ * every other join needs a box. Only wing, through, mirror (and tilt45) attach to side or bottom faces. A half-sunk
+ * cylinder is never longer than the top edge it lies along, and a totem stays within 2 : 1 of its base's narrower
+ * side. A sphere is placed only on a stack or as a totem cap, sunk 0.25 into the piece below so the contact is an
+ * area, not a point. The slot never wraps: a slot >= JOIN_SLOTS gives null.
  * A target turned by anything but quarter turns gives null. So every join stays visible, a box child of a box
  * (centred stack, wing, mirror) is a module narrower than its face on at least one axis, and stacked totem
  * cylinders, and a cylinder stacked on a cylinder, step in by a module each.
@@ -52,9 +55,9 @@ export interface Placed {
 }
 
 export const JOIN_SLOTS: Record<JoinKind, number> = {
-  stack: 25,
+  stack: 5,
   totem: 2,
-  halfSunk: 6,
+  halfSunk: 18,
   wing: 24,
   through: 3,
   mirror: 6,
@@ -67,6 +70,8 @@ const MAX_RATIO = 2.5;
 const MIN_SIZE = 0.5;
 const MAX_SIZE = 2;
 const SPHERE_SINK = 0.25;
+/** A form's longest : shortest overall extent the generator allows; a totem is sized to stay within it. */
+const TOTEM_MAX_RATIO = 2;
 const ROUND: PrimitiveType[] = ['cylinder', 'cone', 'sphere'];
 const EPS = 1e-9;
 
@@ -236,9 +241,9 @@ const STACK_FACES: [number, 1 | -1][] = [
   [2, -1],
 ];
 
-function stack(ctx: JoinContext, t: Shape, slot: number, spin: number): Piece | null {
-  const [axis, sign] = STACK_FACES[slot % 5];
-  const spot = Math.floor(slot / 5);
+/** A piece standing on face STACK_FACES[face] at `spot` (centre, then thirds on the face's axes in x, y, z order). */
+function stack(ctx: JoinContext, t: Shape, face: number, spot: number, spin: number): Piece | null {
+  const [axis, sign] = STACK_FACES[face];
   const types = spin
     ? allowedOf(ctx, ['cube', 'pyramid'])
     : allowedOf(ctx, axis === 1 && sign > 0 ? PRIMITIVES : PRIMITIVES.filter((p) => p !== 'sphere'));
@@ -269,10 +274,10 @@ function stack(ctx: JoinContext, t: Shape, slot: number, spin: number): Piece | 
     ? narrowerBox(ctx.rand, axis, crossHi, MAX_SIZE)
     : crossAndLength(ctx.rand, spin ? 'pyramid' : type, axis, crossHi, MAX_SIZE);
   if (!ws) return null;
-  const face = sign > 0 ? t.max[axis] : t.min[axis];
+  const contact = sign > 0 ? t.max[axis] : t.min[axis];
   const half = type === 'sphere' ? ws[axis] / 2 - SPHERE_SINK : ws[axis] / 2;
   const position = t.centre.map((c, k) => c + offset[k]) as Vec3;
-  position[axis] = face + sign * half;
+  position[axis] = contact + sign * half;
   return piece(type, axis, sign, ws, position, 'add', spin);
 }
 
@@ -305,14 +310,18 @@ function halfSunk(ctx: JoinContext, t: Shape, slot: number): Piece | null {
   if (t.kind !== 'box' || !ctx.allowed.includes('cylinder')) return null;
   const axis = slot % 2 === 0 ? 0 : 2;
   const across = axis === 0 ? 2 : 0;
-  const spot = Math.floor(slot / 2);
-  // the buried half must stay inside the box: diameter within the top face and twice the height
+  const spot = Math.floor(slot / 2) % 3;
+  const end = Math.floor(slot / 6);
+  // the buried half must stay inside the box: diameter within the top face and twice the height; like a chest lid,
+  // it is no longer than the edge it lies along
   const ws = crossAndLength(ctx.rand, 'cylinder', axis, [Math.min(t.ext[across], 2 * t.ext[1]), 2 * t.ext[1]], t.ext[axis]);
   if (!ws) return null;
   const position = [...t.centre] as Vec3;
   position[1] = t.max[1];
   if (spot === 1) position[across] = t.min[across] + ws[across] / 2;
   if (spot === 2) position[across] = t.max[across] - ws[across] / 2;
+  if (end === 1) position[axis] = t.min[axis] + ws[axis] / 2;
+  if (end === 2) position[axis] = t.max[axis] - ws[axis] / 2;
   return piece('cylinder', axis, 1, ws, position);
 }
 
@@ -322,6 +331,8 @@ function totem(ctx: JoinContext, t: Shape, slot: number): Piece[] | null {
   const out: Piece[] = [];
   let width = Math.min(t.ext[0], t.ext[2]);
   let top = t.max[1];
+  // keep the whole totem within TOTEM_MAX_RATIO of the base's narrower side, leaving a module for each piece above
+  const ceiling = t.min[1] + TOTEM_MAX_RATIO * width;
   for (let i = 0; i < slot + 2; i++) {
     // each cylinder above the first is a module narrower than the one below, so the steps show; a cone or
     // sphere cap may be as wide as the one below
@@ -333,9 +344,9 @@ function totem(ctx: JoinContext, t: Shape, slot: number): Piece[] | null {
     if (types.length === 0) return null;
     const type = pick(ctx.rand, types);
     const limit = type === 'cylinder' ? narrower : width;
-    const ws = crossAndLength(ctx.rand, type, 1, [limit, limit], MAX_SIZE);
-    if (!ws) return null;
     const bottom = type === 'sphere' ? top - SPHERE_SINK : top;
+    const ws = crossAndLength(ctx.rand, type, 1, [limit, limit], ceiling - bottom - (slot + 1 - i) * MIN_SIZE);
+    if (!ws) return null;
     out.push(piece(type, 1, 1, ws, [t.centre[0], bottom + ws[1] / 2, t.centre[2]]));
     top = bottom + ws[1];
     width = ws[0];
@@ -501,10 +512,10 @@ export function placeJoin(join: JoinKind, slot: number, ctx: JoinContext): Place
   const one = (p: Piece | null) => (p ? [p] : null);
   switch (join) {
     case 'stack':
-      pieces = one(stack(ctx, t, slot, 0));
+      pieces = one(stack(ctx, t, 0, slot, 0));
       break;
     case 'tilt45':
-      pieces = one(stack(ctx, t, slot, 45));
+      pieces = one(stack(ctx, t, slot, 0, 45));
       break;
     case 'wing':
       pieces = one(wing(ctx, t, slot));

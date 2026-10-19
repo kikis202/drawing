@@ -181,6 +181,14 @@ describe('generateCleanForm', () => {
     expect(totems).toBeGreaterThan(0);
   });
 
+  it('stacks and totems preset usually has a totem', () => {
+    let totems = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      if (steps(generateCleanForm(wasm, seed, EXERCISE_SETTINGS[1])).some((s) => s.join === 'totem')) totems++;
+    }
+    expect(totems).toBeGreaterThanOrEqual(120);
+  }, 60_000);
+
   it('variation keeps the recipe and changes proportions', () => {
     let changed = 0;
     for (let seed = 1; seed <= 10; seed++) {

@@ -175,17 +175,17 @@ describe('joins stay visible', () => {
 });
 
 describe('placeJoin on a 1.5x1x1 box', () => {
-  it('stack: child stands on a face, inside it, axis along the normal', () => {
+  it('stack: child stands on the top face, inside it, axis along the normal', () => {
     const all = placements('stack', ['cube', 'cylinder', 'cone', 'pyramid']);
     expect(all.length).toBeGreaterThan(0);
-    for (const { slot, placed } of all) {
+    for (const { placed } of all) {
       expectClean(placed);
       expect(placed.pieces).toHaveLength(1);
+      expect(placed.pieces[0].rotation).toEqual([0, 0, 0]);
       const b = box(placed.pieces[0]);
-      const axis = contactAxis(b);
-      expect(axis).toBeGreaterThanOrEqual(0);
-      insideFace(b, axis);
-      if (slot === 0) expect(b.min[1]).toBeCloseTo(TMAX[1], 9);
+      expect(contactAxis(b)).toBe(1);
+      expect(b.min[1]).toBeCloseTo(TMAX[1], 9);
+      insideFace(b, 1);
     }
   });
 
@@ -375,6 +375,72 @@ describe('placeJoin edge cases', () => {
     expect(b.min[1]).toBeCloseTo(0.5, 9);
     expect(b.max[0] - b.min[0]).toBeLessThanOrEqual(1 + EPS);
     expect(b.max[2] - b.min[2]).toBeLessThanOrEqual(1.5 + EPS);
+  });
+
+  it('stack places children only on the top face', () => {
+    const cyl: Piece = { type: 'cylinder', size: [1.5, 1, 1.5], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' };
+    const targets: Piece[] = [
+      target,
+      { ...target, size: [1, 1.5, 2], rotation: [90, 0, 0] },
+      { ...target, size: [2, 1, 1.5], rotation: [0, 0, 90], position: [0.25, 0, 0] },
+      cyl,
+      { ...cyl, size: [1.5, 2, 1.5], rotation: [180, 0, 0], position: [0, 0.25, 0] },
+      { ...cyl, size: [1, 1.5, 1], rotation: [0, 0, 90] },
+    ];
+    const kinds = new Set<string>();
+    for (const t of targets) {
+      const top = box(t).max[1];
+      for (let slot = 0; slot < JOIN_SLOTS.stack; slot++) {
+        for (let seed = 1; seed <= 10; seed++) {
+          const placed = placeJoin('stack', slot, ctx(seed, PRIMITIVES, [t]));
+          if (!placed) continue;
+          kinds.add(`${t.type} ${t.rotation.join(',')}`);
+          const child = placed.pieces[0];
+          // a sphere keeps its 0.25 sink into the top face
+          const sink = child.type === 'sphere' ? 0.25 : 0;
+          expect(Math.abs(box(child).min[1] - (top - sink)), JSON.stringify({ t, slot, seed })).toBeLessThan(1e-9);
+        }
+      }
+    }
+    expect(kinds.size).toBe(5);
+  });
+
+  it('half-sunk lids never overhang the box', () => {
+    const targets: Piece[] = [
+      target,
+      { ...target, size: [2, 1, 1] },
+      { ...target, size: [1, 1.5, 2] },
+      { ...target, size: [1, 1, 2], rotation: [0, 90, 0] },
+      { ...target, size: [2, 1.5, 1], rotation: [90, 0, 0], position: [0.25, 0, 0.25] },
+    ];
+    let flushEnd = 0;
+    let checked = 0;
+    for (const t of targets) {
+      const tb = box(t);
+      for (let slot = 0; slot < JOIN_SLOTS.halfSunk; slot++) {
+        for (let seed = 1; seed <= 10; seed++) {
+          const placed = placeJoin('halfSunk', slot, ctx(seed, PRIMITIVES, [t]));
+          if (!placed) continue;
+          checked++;
+          const lid = placed.pieces[0];
+          const b = box(lid);
+          // turned about Z it lies along X, about X along Z
+          const along = lid.rotation[2] !== 0 ? 0 : 2;
+          expect(b.max[along] - b.min[along]).toBeCloseTo(lid.size[1], 9);
+          for (const k of [0, 2]) {
+            expect(b.min[k]).toBeGreaterThanOrEqual(tb.min[k] - EPS);
+            expect(b.max[k]).toBeLessThanOrEqual(tb.max[k] + EPS);
+          }
+          expect(lid.position[1]).toBeCloseTo(tb.max[1], 9);
+          const centred = Math.abs((b.min[along] + b.max[along]) / 2 - (tb.min[along] + tb.max[along]) / 2) < EPS;
+          const atEnd = Math.abs(b.min[along] - tb.min[along]) < EPS || Math.abs(b.max[along] - tb.max[along]) < EPS;
+          expect(centred || atEnd).toBe(true);
+          if (!centred) flushEnd++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(50);
+    expect(flushEnd).toBeGreaterThan(0);
   });
 
   it('a target turned by other than 90 degrees gives null for every join', () => {

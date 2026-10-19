@@ -85,6 +85,10 @@ const LINEAR_EPS = 1e-6;
 /** At Level 3 a totem is base + 2 round pieces (slot 0); from Level 4 up to 3 (slot 1). */
 const LEVEL3_TOTEM_SLOT = 0;
 const OPTIONAL_CUT = 0.5;
+/** Smallest base dimension under a tilted piece: the lid takes a top edge, so the top needs room left for stacks
+ *  and half-sunk pieces, which all stand on top faces. */
+const TILT_BASE_MIN = 1.5;
+const TILTED: JoinKind[] = ['hinged', 'tilt45'];
 const ROUND: PrimitiveType[] = ['cylinder', 'cone', 'sphere'];
 
 function pick<T>(rand: () => number, values: T[]): T {
@@ -222,7 +226,8 @@ function typesFor(join: JoinKind, slot: number, types: PrimitiveType[]): Primiti
   const only = (ts: PrimitiveType[]) => types.filter((t) => ts.includes(t));
   switch (join) {
     case 'stack':
-      return slot % 5 === 0 ? types : types.filter((t) => t !== 'sphere');
+      // every stack slot is on the top face, where a sphere may sit
+      return types;
     case 'tilt45':
       return only(['cube', 'pyramid']);
     case 'wing':
@@ -453,12 +458,15 @@ function attempt(wasm: ManifoldToplevel, seed: number, settings: CleanSettings):
   const joins = rule.joins.filter((j) => settings.joins.includes(j));
   const extras = joins.filter((j) => rule.extra?.includes(j));
   const regular = joins.filter((j) => !extras.includes(j) && j !== 'cut');
+  const type = baseType(settings.allowed);
+  // when a totem can stand on the base, leave room for its smallest form
+  const totemFits = regular.includes('totem') && type === 'cube' && slotsFor('totem', plan, Infinity).length > 0;
   const [lo, hi] = rule.pieces;
-  const wanted = lo + Math.floor(rand() * (hi - lo + 1));
+  const least = totemFits ? Math.min(hi, Math.max(lo, 1 + added('totem', 0))) : lo;
+  const wanted = least + Math.floor(rand() * (hi - least + 1));
   const tilt = settings.level === 6 && extras.length > 0;
   const cutNeeded = settings.level === 5 && extras.length > 0;
   const cutMaybe = settings.level === 6 && joins.includes('cut') && rand() < OPTIONAL_CUT;
-  const type = baseType(settings.allowed);
 
   let build = new Build(wasm);
   try {
@@ -471,7 +479,7 @@ function attempt(wasm: ManifoldToplevel, seed: number, settings: CleanSettings):
         build.delete();
         build = new Build(wasm);
       }
-      build.setBase(basePiece(type, baseSize(sizes, type, settings.level === 1 ? 0.5 : 1)));
+      build.setBase(basePiece(type, baseSize(sizes, type, settings.level === 1 ? 0.5 : tilt ? TILT_BASE_MIN : 1)));
       extrasOk = !tilt || oneStep(build, rand, sizes, extras, plan, 1) !== 'fail';
       if (extrasOk) break;
     }
@@ -568,6 +576,7 @@ function search(
   const sizes = sizeStream(seed, variation);
   const steps = joinSteps(recipe);
   const type = recipe[0].type;
+  const baseMin = recipe.length === 1 ? 0.5 : steps.some((s) => TILTED.includes(s.join)) ? TILT_BASE_MIN : 1;
   let budget = 0;
   let misses: number[] = [];
   let deepest: Search = { passed: false, pieces: [], prefix: 0, used: 0 };
@@ -599,7 +608,7 @@ function search(
     total.left--;
     const build = new Build(wasm);
     try {
-      build.setBase(basePiece(type, baseSize(sizes.next, type, recipe.length === 1 ? 0.5 : 1)));
+      build.setBase(basePiece(type, baseSize(sizes.next, type, baseMin)));
       if (descend(build, 0)) return { ...deepest, passed: true };
     } finally {
       build.delete();
