@@ -2,7 +2,11 @@ import { wrapTurn } from './pose';
 import type { View } from './types';
 
 function whole(v: View): View {
-  return { turn: wrapTurn(Math.round(wrapTurn(v.turn))), tilt: Math.round(v.tilt) + 0 };
+  // Round the magnitude so mirrored tilts (e.g. ±22.5) read with equal magnitudes.
+  return {
+    turn: wrapTurn(Math.round(wrapTurn(v.turn))),
+    tilt: Math.sign(v.tilt) * Math.round(Math.abs(v.tilt)) + 0,
+  };
 }
 
 export function viewLabel(v: View): string {

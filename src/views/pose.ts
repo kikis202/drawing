@@ -23,18 +23,24 @@ export function applyDrag(v: View, dxPx: number, dyPx: number): View {
 
 export function applyKey(v: View, key: string, shift: boolean): View | null {
   const step = shift ? KEY_STEP_SHIFT : KEY_STEP;
+  let { turn, tilt } = v;
   switch (key) {
     case 'ArrowRight':
-      return { turn: wrapTurn(v.turn - step), tilt: v.tilt };
+      turn -= step;
+      break;
     case 'ArrowLeft':
-      return { turn: wrapTurn(v.turn + step), tilt: v.tilt };
+      turn += step;
+      break;
     case 'ArrowDown':
-      return { turn: v.turn, tilt: clampTilt(v.tilt + step) };
+      tilt += step;
+      break;
     case 'ArrowUp':
-      return { turn: v.turn, tilt: clampTilt(v.tilt - step) };
+      tilt -= step;
+      break;
     default:
       return null;
   }
+  return { turn: wrapTurn(turn), tilt: clampTilt(tilt) };
 }
 
 export function interpolateView(a: View, b: View, t: number): View {

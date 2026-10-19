@@ -113,6 +113,29 @@ describe('labels', () => {
     expect(viewLabel({ turn: -90.2, tilt: 29.6 })).toBe('270° turn, 30° tilt');
     expect(viewLabel({ turn: 359.7, tilt: -0.2 })).toBe('0° turn, 0° tilt');
   });
+  it('rounds mirrored tilts to equal magnitudes', () => {
+    expect(viewLabel({ turn: 0, tilt: 22.5 })).toBe('0° turn, 23° tilt');
+    expect(viewLabel({ turn: 0, tilt: -22.5 })).toBe('0° turn, −23° tilt');
+    expect(viewSlug({ turn: 0, tilt: 22.5 })).toBe('0-turn-23-tilt');
+    expect(viewSlug({ turn: 0, tilt: -22.5 })).toBe('0-turn-minus23-tilt');
+  });
+  it('ringViews(16) labels are mirror symmetric', () => {
+    const views = ringViews(16);
+    const tilts = new Set(views.map((v) => v.tilt));
+    for (const t of tilts) {
+      const a = viewLabel({ turn: 0, tilt: t }).replace('−', '');
+      const b = viewLabel({ turn: 0, tilt: -t }).replace('−', '');
+      expect(a).toBe(b);
+    }
+  });
+  it('applyKey normalises both fields from out-of-range input', () => {
+    for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+      const r = applyKey({ turn: 370, tilt: 95 }, key, false)!;
+      expect(r.turn).toBeGreaterThanOrEqual(0);
+      expect(r.turn).toBeLessThan(360);
+      expect(r.tilt).toBeLessThanOrEqual(89);
+    }
+  });
   it('slugs', () => {
     expect(viewSlug({ turn: 135, tilt: -30 })).toBe('135-turn-minus30-tilt');
     expect(viewSlug({ turn: 0, tilt: 60 })).toBe('0-turn-60-tilt');
