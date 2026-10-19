@@ -71,7 +71,7 @@ describe('generateForm', () => {
     const subsets: PrimitiveType[][] = [PRIMITIVES, ['cube'], ['sphere', 'cone'], ['cylinder', 'pyramid', 'cube']];
     const start = performance.now();
     for (let seed = 1; seed <= 300; seed++) {
-      const settings: GenerateSettings = { allowed: subsets[seed % subsets.length], pieces: (seed % 6) + 1 };
+      const settings: GenerateSettings = { allowed: subsets[seed % subsets.length], pieces: (Math.floor(seed / 4) % 6) + 1 };
       const spec = generateForm(wasm, seed, settings);
       const m = buildManifold(wasm, spec.pieces);
       const parts = m.decompose();

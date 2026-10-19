@@ -167,8 +167,12 @@
 
 .shot-label {
   position: absolute;
-  left: 8px;
-  right: 8px;
+  left: 5px;
+  right: auto;
+  max-width: calc(100% - 10px);
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.85);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
