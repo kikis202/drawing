@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { shotLabel } from '../../../src/views/label';
+import { ringViews } from '../../../src/views/spacing';
 import {
   DEFAULT_PLAN,
   MAP_VIEW,
@@ -67,8 +68,40 @@ describe('shot patterns', () => {
     expect(v.every((x) => x.turn === 30)).toBe(true);
   });
 
+  const sideways = (steps: '4x15' | '6x15' | '4x30', tilt: number, turn = 30, topMap = false) =>
+    plan({ pattern: 'sequence', topMap, sequence: { axis: 'sideways', steps, start: { turn, tilt } } });
+
+  it('sideways sequence keeps an unshifted start and clamps extreme starts', () => {
+    expect(views(sideways('6x15', 0)).map((x) => x.tilt)).toEqual([0, 15, 30, 45, 60, 75]);
+    expect(views(sideways('4x30', -120)).map((x) => x.tilt)).toEqual([-89, -59, -29, 1]);
+    expect(views(sideways('4x30', 100)).map((x) => x.tilt)).toEqual([-1, 29, 59, 89]);
+  });
+
+  it('never emits -0 and turntable above is +30', () => {
+    const v = views(
+      plan({
+        pattern: 'sequence',
+        sequence: { axis: 'vertical', steps: '4x15', start: { turn: 0, tilt: -0 } },
+      }),
+    );
+    expect(v[0]).toEqual({ turn: 0, tilt: 0 });
+    expect(views(plan({ turntable: { step: 90, tilt: 'above' } }))[0].tilt).toBe(30);
+  });
+
+  it('map is skipped whenever the pattern already has a top view', () => {
+    const p = sideways('6x15', 70, 0, true);
+    expect(planShots(p)).toHaveLength(6);
+    expect(planShots(p).some((s) => s.role === 'map')).toBe(false);
+    expect(planSummary(p)).toBe('6 steps of 15° side to side');
+    const above = plan({ topMap: true, turntable: { step: 90, tilt: 'above' } });
+    expect(planShots(above)[0].role).toBe('map');
+    expect(planSummary(above)).toMatch(/, plus a top-view map$/);
+  });
+
   it('all around uses the ring spread', () => {
-    expect(views(plan({ pattern: 'allAround' }))).toHaveLength(8);
+    for (const count of [6, 8, 12, 24] as const) {
+      expect(views(plan({ pattern: 'allAround', allAround: { count } }))).toEqual(ringViews(count));
+    }
   });
 
   it('top map comes first and is skipped for orthographic', () => {
@@ -77,7 +110,14 @@ describe('shot patterns', () => {
     expect(shots[0]).toEqual({ view: MAP_VIEW, role: 'map' });
     expect(shots[1].role).toBeUndefined();
     expect(planShots(plan({ pattern: 'orthographic', topMap: true }))).toHaveLength(6);
-    expect(views(plan({ pattern: 'orthographic' }))[4]).toEqual({ turn: 0, tilt: 89 });
+    expect(views(plan({ pattern: 'orthographic' }))).toEqual([
+      { turn: 0, tilt: 0 },
+      { turn: 90, tilt: 0 },
+      { turn: 180, tilt: 0 },
+      { turn: 270, tilt: 0 },
+      { turn: 0, tilt: 89 },
+      { turn: 45, tilt: 30 },
+    ]);
   });
 
   it('summaries read as the spec says', () => {

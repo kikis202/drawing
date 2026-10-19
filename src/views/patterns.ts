@@ -55,8 +55,9 @@ function parseSetting(s: string): [number, number] {
   return [a, b];
 }
 
+/** The map is skipped when the pattern already includes a top view (tilt 89 at any turn). */
 function hasMap(plan: ShotPlan): boolean {
-  return plan.topMap && plan.pattern !== 'orthographic';
+  return plan.topMap && !patternViews(plan).some((v) => v.tilt >= MAX_TILT);
 }
 
 function patternViews(plan: ShotPlan): View[] {
