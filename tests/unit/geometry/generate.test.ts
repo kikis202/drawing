@@ -19,7 +19,13 @@ describe('generateForm', () => {
     const b = generateForm(wasm, 42, { allowed: PRIMITIVES, pieces: 5 });
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
     expect(a.seed).toBe(42);
-    expect(a.version).toBe(1);
+    expect(a.version).toBe(2);
+  });
+
+  it('freeform specs are version 2', () => {
+    const spec = generateForm(wasm, 7, all);
+    expect(spec.version).toBe(2);
+    expect(spec.style).toBe('freeform');
   });
 
   it('uses only allowed primitives', () => {

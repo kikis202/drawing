@@ -18,7 +18,8 @@ beforeAll(async () => {
 
 function single(type: PrimitiveType): FormSpec {
   return {
-    version: 1,
+    version: 2,
+    style: 'freeform',
     seed: 0,
     pieces: [{ type, size: [1, 1, 1], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' }],
   };

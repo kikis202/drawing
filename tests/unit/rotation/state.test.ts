@@ -17,11 +17,12 @@ import { ringViews } from '../../../src/views/spacing';
 import type { FormMesh, FormSpec } from '../../../src/geometry/types';
 
 const spec: FormSpec = {
-  version: 1,
+  version: 2,
+  style: 'freeform',
   seed: 0,
   pieces: [{ type: 'cube', size: [1, 1, 1], rotation: [0, 0, 0], position: [0, 0, 0], op: 'add' }],
 };
-const mesh: FormMesh = { positions: new Float32Array(9), indices: new Uint32Array(3), volume: 1 };
+const mesh: FormMesh = { positions: new Float32Array(9), indices: new Uint32Array(3), volume: 1, bounds: { min: [0, 0, 0], max: [0, 0, 0] }, axes: new Float32Array(0) };
 
 describe('rotation state', () => {
   it('has the documented defaults', () => {

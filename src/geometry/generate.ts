@@ -110,5 +110,5 @@ export function generateForm(wasm: ManifoldToplevel, seed: number, settings: Gen
     if (pieces.length > best.length) best = pieces;
     if (pieces.length >= wanted) break;
   }
-  return { version: 1, seed, pieces: best };
+  return { version: 2, style: 'freeform', seed, pieces: best };
 }
